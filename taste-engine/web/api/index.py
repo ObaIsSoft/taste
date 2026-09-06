@@ -91,6 +91,8 @@ def vote():
     if not winner_id or not loser_id:
         return jsonify({"error": "Missing winner_id or loser_id"}), 400
 
+    is_draw = body.get("is_draw", False)
+
     # Fetch current ratings
     res_w = supabase.table("ratings").select("*").eq("site_id", winner_id).execute()
     res_l = supabase.table("ratings").select("*").eq("site_id", loser_id).execute()
@@ -104,29 +106,52 @@ def vote():
     rating_w = trueskill.Rating(winner["mu"], winner["sigma"])
     rating_l = trueskill.Rating(loser["mu"], loser["sigma"])
 
-    new_rating_w, new_rating_l = trueskill.rate_1vs1(rating_w, rating_l)
+    new_rating_w, new_rating_l = trueskill.rate_1vs1(rating_w, rating_l, drawn=is_draw)
 
-    # Update winner
-    supabase.table("ratings").update({
-        "mu": new_rating_w.mu,
-        "sigma": new_rating_w.sigma,
-        "wins": winner["wins"] + 1,
-        "comparisons": winner["comparisons"] + 1
-    }).eq("site_id", winner_id).execute()
+    if is_draw:
+        # Update winner (treating as draw)
+        supabase.table("ratings").update({
+            "mu": new_rating_w.mu,
+            "sigma": new_rating_w.sigma,
+            "comparisons": winner["comparisons"] + 1
+        }).eq("site_id", winner_id).execute()
 
-    # Update loser
-    supabase.table("ratings").update({
-        "mu": new_rating_l.mu,
-        "sigma": new_rating_l.sigma,
-        "losses": loser["losses"] + 1,
-        "comparisons": loser["comparisons"] + 1
-    }).eq("site_id", loser_id).execute()
+        # Update loser (treating as draw)
+        supabase.table("ratings").update({
+            "mu": new_rating_l.mu,
+            "sigma": new_rating_l.sigma,
+            "comparisons": loser["comparisons"] + 1
+        }).eq("site_id", loser_id).execute()
 
-    # Record match
-    supabase.table("match_history").insert({
-        "winner_id": winner_id,
-        "loser_id": loser_id
-    }).execute()
+        # Record match
+        supabase.table("match_history").insert({
+            "winner_id": winner_id,
+            "loser_id": loser_id,
+            "is_draw": True
+        }).execute()
+    else:
+        # Update winner
+        supabase.table("ratings").update({
+            "mu": new_rating_w.mu,
+            "sigma": new_rating_w.sigma,
+            "wins": winner["wins"] + 1,
+            "comparisons": winner["comparisons"] + 1
+        }).eq("site_id", winner_id).execute()
+    
+        # Update loser
+        supabase.table("ratings").update({
+            "mu": new_rating_l.mu,
+            "sigma": new_rating_l.sigma,
+            "losses": loser["losses"] + 1,
+            "comparisons": loser["comparisons"] + 1
+        }).eq("site_id", loser_id).execute()
+    
+        # Record match
+        supabase.table("match_history").insert({
+            "winner_id": winner_id,
+            "loser_id": loser_id,
+            "is_draw": False
+        }).execute()
 
     return jsonify({"status": "success"})
 
