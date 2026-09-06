@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taste Engine Leaderboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #111; color: #fff; font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-4xl mx-auto">
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold">Taste Engine Leaderboard</h1>
+                <p class="text-zinc-400">Ranked by Conservative TrueSkill (Mu - 3*Sigma)</p>
+            </div>
+            <a href="/" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 font-medium">Back to Voting</a>
+        </header>
+
+        <div class="bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-zinc-950 text-zinc-400">
+                    <tr>
+                        <th class="p-4 font-medium">Rank</th>
+                        <th class="p-4 font-medium">Site ID</th>
+                        <th class="p-4 font-medium">Score (Mu-3Σ)</th>
+                        <th class="p-4 font-medium">Mu (Skill)</th>
+                        <th class="p-4 font-medium">Sigma (Uncertainty)</th>
+                        <th class="p-4 font-medium">Record (W-L)</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="divide-y divide-zinc-800">
+                    <tr><td colspan="6" class="p-4 text-center text-zinc-500">Loading leaderboard...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function loadLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard');
+                const data = await res.json();
+                
+                const tbody = document.getElementById('tableBody');
+                tbody.innerHTML = '';
+                
+                data.leaderboard.forEach((site, index) => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-zinc-800/50 transition-colors';
+                    tr.innerHTML = `
+                        <td class="p-4 text-zinc-500 font-mono">#${index + 1}</td>
+                        <td class="p-4 font-semibold text-blue-400">
+                            <a href="/data/${site.site_id}/screenshot_hero.png" target="_blank">${site.site_id}</a>
+                        </td>
+                        <td class="p-4 font-bold text-lg">${site.score.toFixed(2)}</td>
+                        <td class="p-4 text-zinc-400">${site.mu.toFixed(2)}</td>
+                        <td class="p-4 text-zinc-400">${site.sigma.toFixed(2)}</td>
+                        <td class="p-4">
+                            <span class="text-green-500">${site.wins}</span> - <span class="text-red-500">${site.losses}</span>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        
+        loadLeaderboard();
+    </script>
+</body>
+</html>

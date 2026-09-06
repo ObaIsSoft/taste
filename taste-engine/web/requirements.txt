@@ -1,0 +1,4 @@
+Flask==3.0.0
+supabase==2.31.0
+trueskill==0.4.5
+numpy==1.26.4

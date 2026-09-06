@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taste Engine Validator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #111; color: #fff; font-family: 'Inter', sans-serif; }
+        .image-container { height: 75vh; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid #333;}
+        .image-container img { width: 100%; display: block; }
+        .image-container::-webkit-scrollbar { width: 8px; }
+        .image-container::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+    
+    <header class="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+        <div>
+            <h1 class="text-xl font-bold tracking-tight">Taste Engine Validator</h1>
+            <p class="text-sm text-zinc-400">Matchmaking visually similar sites</p>
+        </div>
+        <div class="flex gap-4">
+            <button id="skipBtn" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm font-medium transition-colors">Skip Pair (Draw)</button>
+            <a href="/leaderboard.html" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium transition-colors">View Leaderboard</a>
+        </div>
+    </header>
+
+    <main class="flex-1 p-6 flex gap-6" id="matchArea">
+        <!-- Site A -->
+        <div class="flex-1 flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <h2 id="titleA" class="font-semibold text-lg truncate">Loading...</h2>
+                <span id="scoreA" class="text-xs font-mono text-zinc-500"></span>
+            </div>
+            <div class="image-container cursor-pointer hover:border-blue-500 transition-colors" id="containerA">
+                <img id="imgA" src="" alt="Site A">
+            </div>
+            <button id="btnA" class="w-full py-4 rounded-xl bg-zinc-800 hover:bg-blue-600 text-lg font-bold transition-colors">A is Better</button>
+        </div>
+
+        <div class="flex flex-col justify-center text-zinc-600 font-bold italic text-2xl">VS</div>
+
+        <!-- Site B -->
+        <div class="flex-1 flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <h2 id="titleB" class="font-semibold text-lg truncate">Loading...</h2>
+                <span id="scoreB" class="text-xs font-mono text-zinc-500"></span>
+            </div>
+            <div class="image-container cursor-pointer hover:border-blue-500 transition-colors" id="containerB">
+                <img id="imgB" src="" alt="Site B">
+            </div>
+            <button id="btnB" class="w-full py-4 rounded-xl bg-zinc-800 hover:bg-blue-600 text-lg font-bold transition-colors">B is Better</button>
+        </div>
+    </main>
+
+    <!-- Full page toggle -->
+    <div class="p-4 flex justify-center gap-4 bg-black">
+        <button id="toggleViewBtn" class="text-sm text-zinc-400 hover:text-white underline">View Full Pages</button>
+    </div>
+
+    <script>
+        let currentA = null;
+        let currentB = null;
+        let viewMode = 'hero'; // 'hero' or 'full'
+
+        const imgA = document.getElementById('imgA');
+        const imgB = document.getElementById('imgB');
+
+        async function loadNextPair() {
+            try {
+                const res = await fetch('/api/next_pair');
+                if (!res.ok) throw new Error("Failed to load pair");
+                const data = await res.json();
+                
+                currentA = data.site_a;
+                currentB = data.site_b;
+                
+                document.getElementById('titleA').textContent = currentA.site_id;
+                document.getElementById('scoreA').textContent = `Mu: ${currentA.mu.toFixed(1)} | Σ: ${currentA.sigma.toFixed(1)}`;
+                
+                document.getElementById('titleB').textContent = currentB.site_id;
+                document.getElementById('scoreB').textContent = `Mu: ${currentB.mu.toFixed(1)} | Σ: ${currentB.sigma.toFixed(1)}`;
+
+                updateImages();
+                
+            } catch(e) {
+                console.error(e);
+                document.getElementById('titleA').textContent = "Error loading data.";
+            }
+        }
+
+        function updateImages() {
+            if(!currentA || !currentB) return;
+            const imgPath = viewMode === 'hero' ? 'screenshot_hero.png' : 'screenshot_full.png';
+            imgA.src = `/data/${currentA.site_id}/${imgPath}`;
+            imgB.src = `/data/${currentB.site_id}/${imgPath}`;
+            
+            // Scroll containers back to top
+            document.getElementById('containerA').scrollTop = 0;
+            document.getElementById('containerB').scrollTop = 0;
+        }
+
+        async function submitVote(winnerId, loserId) {
+            // Optimistic UI clear
+            imgA.src = ""; imgB.src = "";
+            document.getElementById('titleA').textContent = "Submitting vote...";
+            document.getElementById('titleB').textContent = "Submitting vote...";
+
+            await fetch('/api/vote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ winner_id: winnerId, loser_id: loserId })
+            });
+
+            loadNextPair();
+        }
+
+        document.getElementById('btnA').addEventListener('click', () => submitVote(currentA.site_id, currentB.site_id));
+        document.getElementById('btnB').addEventListener('click', () => submitVote(currentB.site_id, currentA.site_id));
+        
+        document.getElementById('containerA').addEventListener('click', () => submitVote(currentA.site_id, currentB.site_id));
+        document.getElementById('containerB').addEventListener('click', () => submitVote(currentB.site_id, currentA.site_id));
+
+        document.getElementById('skipBtn').addEventListener('click', () => {
+            loadNextPair();
+        });
+
+        document.getElementById('toggleViewBtn').addEventListener('click', (e) => {
+            viewMode = viewMode === 'hero' ? 'full' : 'hero';
+            e.target.textContent = viewMode === 'hero' ? 'View Full Pages' : 'View Hero Screenshots';
+            updateImages();
+        });
+
+        // Init
+        loadNextPair();
+    </script>
+</body>
+</html>

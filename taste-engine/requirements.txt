@@ -1,0 +1,9 @@
+playwright==1.47.0
+pillow==10.4.0
+requests==2.32.3
+colorthief==0.2.1
+anthropic==0.34.2
+ffmpeg-python==0.2.0
+trueskill==0.4.5
+rich==13.8.1
+python-dotenv==1.0.1
