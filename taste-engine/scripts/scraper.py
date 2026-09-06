@@ -211,7 +211,15 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
                 console.print(f"[dim]  ↳ Dismissed {dismissed} overlay(s)[/dim]")
                 time.sleep(1)  # Let layout reflow after dismissal
 
-            # ── Step 2: Pre-scroll pass (triggers lazy loading) ───────────
+            # ── Step 2: Hero screenshot (clean, no overlays) ───────────────
+            # We take this BEFORE any scrolling because Awwwards sites heavily
+            # use Locomotive/Lenis scroll hijacking which breaks scrollTo(0,0).
+            page.screenshot(
+                path=str(site_dir / "screenshot_hero.png"),
+                clip={"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]},
+            )
+
+            # ── Step 3: Pre-scroll pass (triggers lazy loading) ───────────
             # Scroll through the whole page quickly to trigger lazy-loaded
             # images/sections, then scroll back to top for clean screenshots
             page_height = page.evaluate("() => document.body.scrollHeight")
@@ -224,12 +232,6 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             # Re-dismiss any overlays that appeared during scroll
             _dismiss_overlays(page)
             time.sleep(0.5)
-
-            # ── Step 3: Hero screenshot (clean, no overlays) ───────────────
-            page.screenshot(
-                path=str(site_dir / "screenshot_hero.png"),
-                clip={"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]},
-            )
 
             # ── Step 4: Scroll interaction for video recording ─────────────
             # Use mouse.wheel to naturally trigger Locomotive/Lenis/GSAP ScrollTrigger.

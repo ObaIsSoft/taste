@@ -36,38 +36,46 @@ def next_pair():
     res = supabase.table("ratings").select("*").execute()
     data = res.data
 
+    import random
+
     if len(data) < 2:
         return jsonify({"error": "Not enough data"}), 400
 
-    # Find the site that needs rating the most (highest sigma)
-    # Filter out ones with no vector if needed, but we should have vectors for all
+    # Sort by highest sigma (most uncertain)
     data.sort(key=lambda x: x["sigma"], reverse=True)
-    site_a = data[0]
+    
+    # Pick randomly from the top 5 most uncertain sites to prevent immediate rematches
+    top_uncertain = data[:5]
+    site_a = random.choice(top_uncertain)
 
     if not site_a.get("vector"):
         # Fallback to a random site if no vector
-        site_b = data[1]
+        available = [d for d in data if d["site_id"] != site_a["site_id"]]
+        site_b = random.choice(available) if available else data[0]
     else:
-        # Find the most visually similar site that isn't site_a
-        best_b = None
-        best_sim = -1
-        
-        # Only look at the top 30 sites that need rating to avoid pairing with a highly confident site
-        candidate_pool = [s for s in data[1:31] if s.get("vector")]
+        # Find visually similar sites
+        candidate_pool = [s for s in data if s.get("vector") and s["site_id"] != site_a["site_id"]]
         if not candidate_pool:
-            candidate_pool = [data[1]]
+            candidate_pool = [d for d in data if d["site_id"] != site_a["site_id"]]
             
+        # Calculate similarity for all candidates
         for candidate in candidate_pool:
-            sim = cosine_similarity(site_a["vector"], candidate["vector"])
-            if sim > best_sim:
-                best_sim = sim
-                best_b = candidate
+            if candidate.get("vector"):
+                candidate["_sim"] = cosine_similarity(site_a["vector"], candidate["vector"])
+            else:
+                candidate["_sim"] = -1
                 
-        site_b = best_b
+        candidate_pool.sort(key=lambda x: x.get("_sim", -1), reverse=True)
+        
+        # Pick randomly from the top 5 most similar to ensure variety
+        top_similar = candidate_pool[:5]
+        site_b = random.choice(top_similar)
 
     # We shouldn't send the huge vectors to the frontend
     site_a.pop("vector", None)
     site_b.pop("vector", None)
+    site_a.pop("_sim", None)
+    site_b.pop("_sim", None)
 
     return jsonify({"site_a": site_a, "site_b": site_b})
 
