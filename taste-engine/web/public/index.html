@@ -7,13 +7,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #111; color: #fff; font-family: 'Inter', sans-serif; }
-        .image-container { height: 75vh; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid #333;}
+        .image-container { max-height: 35vh; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid #333;}
+        @media (min-width: 768px) {
+            .image-container { height: 75vh; max-height: none; }
+        }
         .image-container img { width: 100%; display: block; }
         .image-container::-webkit-scrollbar { width: 8px; }
         .image-container::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
     </style>
 </head>
-<body class="flex flex-col h-screen overflow-hidden">
+<body class="flex flex-col min-h-screen overflow-y-auto overflow-x-hidden md:h-screen md:overflow-hidden">
     
     <header class="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
         <div>
@@ -25,7 +28,7 @@
         </div>
     </header>
 
-    <main class="flex-1 p-6 flex gap-6" id="matchArea">
+    <main class="flex-1 p-4 md:p-6 flex flex-col md:flex-row gap-4 md:gap-6" id="matchArea">
         <!-- Site A -->
         <div class="flex-1 flex flex-col gap-4">
             <div class="flex justify-between items-center">
@@ -38,9 +41,9 @@
             <button id="btnA" class="w-full py-4 rounded-xl bg-zinc-800 hover:bg-blue-600 text-lg font-bold transition-colors">A is Better</button>
         </div>
 
-        <div class="flex flex-col justify-center items-center gap-6">
-            <div class="text-zinc-600 font-bold italic text-2xl">VS</div>
-            <button id="skipBtn" class="px-6 py-4 rounded-full bg-zinc-800 hover:bg-zinc-700 text-sm font-bold shadow-lg transition-colors border border-zinc-700 w-24 h-24 flex items-center justify-center text-center">Skip / Draw</button>
+        <div class="flex flex-row md:flex-col justify-center items-center gap-4 md:gap-6 py-2 md:py-0">
+            <div class="text-zinc-600 font-bold italic text-xl md:text-2xl">VS</div>
+            <button id="skipBtn" class="px-6 py-3 md:px-0 md:py-0 rounded-full bg-zinc-800 hover:bg-zinc-700 text-sm font-bold shadow-lg transition-colors border border-zinc-700 md:w-24 md:h-24 flex items-center justify-center text-center">Skip / Draw</button>
         </div>
 
         <!-- Site B -->
