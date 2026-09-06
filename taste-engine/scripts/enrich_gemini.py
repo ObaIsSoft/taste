@@ -129,6 +129,13 @@ def generate_rationale(site_id: str):
             motion_code=motion_summary
         )
 
+        out_path = site_dir / "taste_rationale.md"
+        
+        # Skip if already exists
+        if out_path.exists():
+            console.print(f"[yellow]⏭[/yellow] Skip {site_id} (rationale already exists)")
+            return True
+            
         console.print(f"[cyan]→[/cyan] Querying Gemini for {site_id}...")
         
         # New SDK syntax
@@ -137,7 +144,6 @@ def generate_rationale(site_id: str):
             contents=prompt,
         )
         
-        out_path = site_dir / "taste_rationale.md"
         out_path.write_text(response.text)
         
         console.print(f"[green]✓[/green] Rationale saved for {site_id}")
@@ -158,5 +164,12 @@ if __name__ == "__main__":
     else:
         for site_dir in sorted(DATA_DIR.iterdir()):
             if site_dir.is_dir() and (site_dir / "metadata.json").exists():
-                generate_rationale(site_dir.name)
-                time.sleep(2)  # Respect free tier rate limits
+                out_path = site_dir / "taste_rationale.md"
+                if not out_path.exists():
+                    success = generate_rationale(site_dir.name)
+                    if success:
+                        time.sleep(5)  # 12 RPM to stay safely under 15 RPM free tier limit
+                    else:
+                        time.sleep(60) # If it fails (likely rate limit), wait a full minute
+                else:
+                    console.print(f"[yellow]⏭[/yellow] Skip {site_dir.name}")

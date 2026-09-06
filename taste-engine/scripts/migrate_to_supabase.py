@@ -34,14 +34,17 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def migrate():
-    ratings_path = DATA_DIR / "ratings.json"
-    if not ratings_path.exists():
-        console.print("[red]✗ No ratings.json found.[/red]")
-        return
-
-    ratings_data = json.loads(ratings_path.read_text())
-    
     # 1. Upload Ratings
+    ratings_path = DATA_DIR / "ratings.json"
+    if ratings_path.exists():
+        ratings_data = json.loads(ratings_path.read_text())
+    else:
+        console.print("[yellow]No ratings.json found. Initializing defaults from data directory.[/yellow]")
+        ratings_data = {}
+        for site_dir in DATA_DIR.glob("site-*"):
+            if site_dir.is_dir() and (site_dir / "embedding.json").exists():
+                ratings_data[site_dir.name] = {}
+
     for site_id, data in ratings_data.items():
         rating = data.get("rating", {})
         mu = rating.get("mu", 25.0)
