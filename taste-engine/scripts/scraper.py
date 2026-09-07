@@ -381,6 +381,39 @@ def _dismiss_overlays(page) -> int:
         except Exception:
             pass
 
+    # ── Strategy 1.5: Awwwards "Enter Experience" / Intro Gates ─────────────
+    enter_texts = [
+        # English
+        "Enter", "Enter site", "Enter experience", "Start", "Start experience",
+        "Launch", "Play", "Discover", "Explore", "View site", "Click to enter",
+        "Tap to enter", "Enter the site",
+        # French (since site-059 is French)
+        "Entrer", "Découvrir", "Explorer", "Commencer"
+    ]
+
+    for text in enter_texts:
+        try:
+            # We want exact=False to match "Enter the Experience" from "Enter"
+            btn = page.get_by_role("button", name=text, exact=False).first
+            if btn.is_visible(timeout=500):
+                btn.click(timeout=1000)
+                dismissed += 1
+                time.sleep(1.0) # These often trigger big WebGL transitions, wait a bit
+                break
+        except Exception:
+            pass
+        
+        # Sometimes these aren't `<button>` tags, they are just `<a>` or `<div>`
+        try:
+            link = page.get_by_text(text, exact=True).first
+            if link.is_visible(timeout=500):
+                link.click(timeout=1000)
+                dismissed += 1
+                time.sleep(1.0)
+                break
+        except Exception:
+            pass
+
     # ── Strategy 2: Common cookie banner CSS selectors ─────────────────────
     if dismissed == 0:
         cookie_selectors = [
