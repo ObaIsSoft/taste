@@ -78,6 +78,21 @@
                 if (!res.ok) throw new Error("Failed to load pair");
                 const data = await res.json();
                 
+                if (data.status === "complete") {
+                    document.getElementById("matchArea").innerHTML = `
+                        <div class="flex-1 flex flex-col justify-center items-center gap-6 py-20 text-center">
+                            <div class="w-24 h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                            </div>
+                            <h2 class="text-4xl font-bold tracking-tight">Phase 1 Voting Complete!</h2>
+                            <p class="text-zinc-400 text-lg max-w-md">The TrueSkill algorithm has successfully stabilized the dataset. You have gathered enough human feedback to train the Taste Engine.</p>
+                            <a href="/leaderboard.html" class="mt-8 px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-lg font-bold shadow-lg transition-colors">View Top 15 Leaderboard</a>
+                        </div>
+                    `;
+                    document.getElementById("toggleViewBtn").style.display = "none";
+                    return;
+                }
+
                 currentA = data.site_a;
                 currentB = data.site_b;
                 

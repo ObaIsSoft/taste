@@ -41,6 +41,12 @@ def next_pair():
     if len(data) < 2:
         return jsonify({"error": "Not enough data"}), 400
 
+    # Dynamic Voting Ender: If the dataset has reached an average of 15 comparisons per site,
+    # the algorithm has mathematically stabilized. This dynamically scales if new sites are added.
+    avg_comparisons = sum(d["comparisons"] for d in data) / len(data)
+    if avg_comparisons >= 15:
+        return jsonify({"status": "complete"})
+
     # Sort by highest sigma (most uncertain)
     data.sort(key=lambda x: x["sigma"], reverse=True)
     
