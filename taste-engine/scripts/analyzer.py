@@ -41,15 +41,15 @@ def classify_palette(colors: list[tuple]) -> str:
     avg_saturation  = sum(saturation_vals) / len(saturation_vals)
 
     if avg_brightness < 0.2:
-        return "dark-luxury" if avg_saturation < 0.3 else "dark-vibrant"
+        return "dark-desaturated" if avg_saturation < 0.3 else "dark-highly-saturated"
     elif avg_brightness > 0.85:
-        return "minimal-white" if avg_saturation < 0.2 else "bright-playful"
+        return "bright-desaturated" if avg_saturation < 0.2 else "bright-highly-saturated"
     elif avg_saturation > 0.6:
-        return "bold-colorful"
+        return "mid-brightness-highly-saturated"
     elif avg_saturation < 0.15:
-        return "monochromatic"
+        return "monochromatic-neutral"
     else:
-        return "balanced-mid"
+        return "balanced-midtones"
 
 
 def estimate_whitespace_ratio(img: Image.Image) -> float:

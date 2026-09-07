@@ -19,14 +19,14 @@ DESIGN_PROMPT = """You are analyzing a premium website screenshot as a senior UI
 Respond ONLY with a valid JSON object — no markdown, no explanations.
 
 {
-  "layout_type": "one of: centered-hero | asymmetric | split-screen | full-bleed | editorial-grid | brutalist",
-  "typography_style": "one of: editorial-serif | geometric-sans | humanist-sans | brutalist-display | monospace | mixed",
-  "color_mood": "one of: dark-luxury | minimal-white | bold-vibrant | earth-tones | neon-digital | monochromatic",
-  "motion_impression": "one of: static | subtle-fade | scroll-driven | heavy-gsap | webgl-3d | particle-system",
-  "design_era": "one of: pre-2020-flat | 2020-glassmorphism | 2022-brutalist | 2023-minimal | 2024-aigenerated | 2025-immersive",
-  "aesthetic_category": "one of: luxury | editorial | corporate | startup | creative-agency | e-commerce | portfolio | brutalist",
-  "whitespace_use": "one of: tight | balanced | generous | extreme",
-  "notable_elements": ["array of specific elements you can see, e.g. oversized-type, grain-texture, custom-cursor, 3d-object, video-background"]
+  "layout_type": "Describe the exact layout structure (e.g., 'centered-hero', 'asymmetric', 'radial-focus', or any novel layout observed)",
+  "typography_style": "Describe the typographic system and pairing (e.g., 'high-contrast-editorial', 'neo-brutalist-mono', etc.)",
+  "color_mood": "Describe the emotional mood of the color palette (e.g., 'dark-luxury', 'clinical-minimal', 'acid-neon', etc.)",
+  "motion_impression": "Describe the static impression of motion/depth (e.g., 'heavy-webgl', 'scroll-driven-story', etc.)",
+  "design_era": "Estimate the design era or paradigm (e.g., '2020-glassmorphism', 'post-2025-spatial', etc.)",
+  "aesthetic_category": "Describe the aesthetic genre (e.g., 'luxury-ecommerce', 'indie-portfolio', 'fintech-corporate', etc.)",
+  "whitespace_use": "Describe how whitespace is utilized (e.g., 'ultra-generous', 'claustrophobic-brutalist', 'balanced', etc.)",
+  "notable_elements": ["array of specific unique elements you can see, e.g. oversized-type, grain-texture, custom-cursor, 3d-object, video-background"]
 }"""
 
 

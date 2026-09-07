@@ -7,3 +7,6 @@ ffmpeg-python==0.2.0
 trueskill==0.4.5
 rich==13.8.1
 python-dotenv==1.0.1
+torch>=2.3.0
+torchcodec>=0.1.0
+litellm>=1.40.0

@@ -14,11 +14,10 @@ import base64
 import time
 from pathlib import Path
 from rich.console import Console
-import anthropic
-from config import DATA_DIR, CLAUDE_MODEL, ANTHROPIC_API_KEY, LOGS_DIR
+from litellm import completion
+from config import DATA_DIR, TASTE_MODEL, LOGS_DIR
 
 console = Console()
-client  = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
 def load_image_b64(path: str | Path, max_kb: int = 2000) -> tuple[str, str]:
@@ -105,8 +104,8 @@ def enrich_with_claude(site_id: str, entry: dict) -> dict | None:
     # 1. Hero screenshot
     hero_b64, hero_type = load_image_b64(hero_path, max_kb=1500)
     content_blocks.append({
-        "type": "image",
-        "source": {"type": "base64", "media_type": hero_type, "data": hero_b64},
+        "type": "image_url",
+        "image_url": {"url": f"data:{hero_type};base64,{hero_b64}"}
     })
     content_blocks.append({
         "type": "text",
@@ -114,11 +113,13 @@ def enrich_with_claude(site_id: str, entry: dict) -> dict | None:
     })
 
     # 2. Sequential motion frames (if available)
-    manifest_path = site_dir / "frames_manifest.json"
+    manifest_path = site_dir / "motion_storyboard.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())
-        frames   = manifest.get("frames", [])[:4]  # max 4 frames (API limit)
-        timestamps = manifest.get("timestamps", [])
+        frames_list = manifest.get("frames", [])[:4]  # max 4 frames (API limit)
+        
+        frames = [f["filename"] for f in frames_list]
+        timestamps = [f["timestamp_sec"] for f in frames_list]
 
         if frames:
             content_blocks.append({
@@ -129,12 +130,13 @@ def enrich_with_claude(site_id: str, entry: dict) -> dict | None:
                     "These show how the site MOVES over time, not just its static state.\n"
                 ),
             })
-            for i, (frame_path, ts) in enumerate(zip(frames, timestamps)):
+            for i, (frame_name, ts) in enumerate(zip(frames, timestamps)):
                 try:
+                    frame_path = site_dir / "frames" / frame_name
                     frame_b64, frame_type = load_image_b64(frame_path, max_kb=800)
                     content_blocks.append({
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": frame_type, "data": frame_b64},
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{frame_type};base64,{frame_b64}"},
                     })
                     content_blocks.append({
                         "type": "text",
@@ -172,11 +174,11 @@ Respond ONLY with a valid JSON object:
   
   "motion_language": {{
     "personality": ["3 words, e.g. 'cinematic', 'breathing', 'precise'"],
-    "easing_type": "spring-physics | ease-out-cubic | linear | bounce | custom-bezier",
-    "pacing": "fast-snappy | medium-confident | slow-cinematic | varied-editorial",
-    "entrance_pattern": "what enters first vs last? e.g. 'background-first, then headline-stagger, then CTA-fade'",
-    "scroll_behavior": "none | subtle-parallax | section-reveals | scroll-scrub | full-scroll-narrative",
-    "hover_quality": "none | color-shift | scale-bounce | underline-draw | cursor-morph | complex",
+    "easing_type": "Describe the physical easing curve (e.g., 'spring-physics', 'heavy-friction-stop', 'custom-bezier', or novel physics observed)",
+    "pacing": "Describe the pacing of the motion (e.g., 'fast-snappy', 'slow-cinematic', 'varied-editorial', etc.)",
+    "entrance_pattern": "Describe what enters first vs last (e.g., 'background-first, then headline-stagger, then CTA-fade')",
+    "scroll_behavior": "Describe how scrolling affects the page (e.g., 'subtle-parallax', 'section-reveals', 'full-scroll-narrative', etc.)",
+    "hover_quality": "Describe hover micro-interactions (e.g., 'color-shift', 'cursor-morph', 'complex-magnetic-pull', etc.)",
     "techniques_identified": ["list of specific techniques you can infer from the frames + code"]
   }},
   
@@ -192,9 +194,9 @@ Respond ONLY with a valid JSON object:
     "text_color":       "#hex",
     "font_heading":     "Font name or 'Unknown'",
     "font_body":        "Font name or 'Unknown'",
-    "spacing_unit":     "4px | 8px | 10px | 16px",
-    "border_radius":    "none | subtle (4-8px) | medium (12-16px) | rounded (20px+) | pill",
-    "shadow_style":     "none | soft | hard | glow | colored"
+    "spacing_unit":     "Describe the primary spatial increment (e.g., 'tight 4px system', 'airy 16px blocks', etc.)",
+    "border_radius":    "Describe the border-radius philosophy (e.g., 'sharp 0px brutalist', 'pill-shaped buttons', 'subtle 4px', etc.)",
+    "shadow_style":     "Describe the use of shadows/elevation (e.g., 'flat/none', 'colored-glow', 'harsh-brutalist-offset', etc.)"
   }},
   
   "premium_signals": ["specific observable details that elevate this above generic, e.g. 'custom variable font with weight animation', 'grain texture overlay at 0.04 opacity'"],
@@ -207,13 +209,13 @@ Respond ONLY with a valid JSON object:
     content_blocks.append({"type": "text", "text": prompt})
 
     try:
-        message = client.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=2500,
+        response = completion(
+            model=TASTE_MODEL,
             messages=[{"role": "user", "content": content_blocks}],
+            max_tokens=2500
         )
 
-        raw = message.content[0].text.strip()
+        raw = response.choices[0].message.content.strip()
 
         # Strip markdown fences
         if "```json" in raw:
@@ -223,9 +225,9 @@ Respond ONLY with a valid JSON object:
 
         result = json.loads(raw.strip())
         result["enriched_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        result["model"]       = CLAUDE_MODEL
+        result["model"]       = TASTE_MODEL
 
-        (site_dir / "claude_rationale.json").write_text(json.dumps(result, indent=2))
+        (site_dir / "taste_rationale.json").write_text(json.dumps(result, indent=2))
         console.print(f"[green]✓[/green] {site_id}: enriched with motion + taste analysis")
         return result
 
@@ -245,8 +247,8 @@ if __name__ == "__main__":
     parser.add_argument("--site", help="Enrich a single site ID")
     args = parser.parse_args()
 
-    if not ANTHROPIC_API_KEY:
-        console.print("[red]✗ ANTHROPIC_API_KEY not set. Create a .env file from .env.example[/red]")
+    if not TASTE_MODEL:
+        console.print("[red]✗ TASTE_MODEL not set in config.py[/red]")
         exit(1)
 
     # Load master dataset

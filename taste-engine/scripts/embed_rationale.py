@@ -9,29 +9,14 @@ import json
 import time
 import os
 from pathlib import Path
-from google import genai
+from litellm import embedding
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from config import DATA_DIR
+from config import DATA_DIR, EMBEDDING_MODEL
 
 console = Console()
-
-def get_api_key():
-    env_path = Path(__file__).parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            if line.startswith("GEMINI_API_KEY="):
-                return line.split("=", 1)[1].strip()
-    return os.environ.get("GEMINI_API_KEY")
-
-API_KEY = get_api_key()
-if not API_KEY or API_KEY == "your_key_here":
-    console.print("[red]✗ GEMINI_API_KEY not found.[/red]")
-    sys.exit(1)
-
-client = genai.Client(api_key=API_KEY)
 
 def generate_embedding(site_id: str):
     site_dir = DATA_DIR / site_id
@@ -45,12 +30,12 @@ def generate_embedding(site_id: str):
         text = rationale_path.read_text()
         console.print(f"[cyan]→[/cyan] Embedding {site_id}...")
         
-        response = client.models.embed_content(
-            model='gemini-embedding-2',
-            contents=text,
+        response = embedding(
+            model=EMBEDDING_MODEL,
+            input=text
         )
         
-        vector = response.embeddings[0].values
+        vector = response.data[0]["embedding"]
         
         embed_path.write_text(json.dumps({"vector": vector}))
         console.print(f"[green]✓[/green] Embedding saved for {site_id}")

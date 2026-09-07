@@ -17,7 +17,8 @@ import statistics
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from config import DATA_DIR, OLLAMA_URL
+from litellm import completion
+from config import DATA_DIR, TASTE_MODEL
 
 console = Console()
 
@@ -91,10 +92,9 @@ def aggregate_cohort(sites):
             aggregated["motion_profiles"].append(data["motion"])
             
         if "rationale" in data:
-            # We just take a snippet of the rationale to save token space
-            lines = data["rationale"].split("\n")
-            snippet = "\n".join([line for line in lines if line.startswith("* `")])
-            aggregated["rationales"].append(snippet)
+            # We include the full qualitative rationale since local models (Llama 3/Qwen) have large context windows
+            # This ensures we don't lose data on texture, mood, image quality, glassmorphism, etc.
+            aggregated["rationales"].append(f"--- SITE {site_id} RATIONALE ---\n{data['rationale']}")
             
     # Calculate means
     def mean(lst):
@@ -135,13 +135,24 @@ def main():
     
     prompt = f"""
 You are the world's leading expert in digital design, motion physics, and aesthetic mathematics.
-I am providing you with the aggregated structural data, mathematical layouts, and motion physics (GSAP/CSS) for the Top 15 Highest Rated websites (The Winners) and the Bottom 15 Lowest Rated websites (The Losers). 
+I am providing you with the aggregated structural data, mathematical layouts, and qualitative design rationales for the Top 15 Highest Rated websites (The Winners) and the Bottom 15 Lowest Rated websites (The Losers). 
 
 IMPORTANT CONTEXT: All 30 of these websites are premium Awwwards/Landbook winners. The "Losers" are not bad 1990s websites; they are simply the *least preferred* among an elite group based on 700+ human RLHF votes.
 
-Your task is to analyze the subtle differences in the underlying system: typography scaling, whitespace ratios, layout asymmetry, and motion choreography/physics.
+Your task is to analyze the subtle differences in the underlying system and extract the definitive "Rules of Taste". 
 
-Extract the definitive "Rules of Taste" from this dataset. Focus on the systems, physics, and execution.
+You MUST analyze and contrast the Winners vs Losers across ALL of the following dimensions:
+- Typography & Font (Scaling, pairing, weight)
+- Whitespace & Layout Density
+- Hero Sections (Structure, impact)
+- Logo Usage & Type
+- Color Systems (Palettes, complementary structures, proper vs improper use of Glassmorphism)
+- Texture & Feel
+- Imagery (Style, content, 3D placement, video quality)
+- Mood & Pace (Relation of the visual message to the emotional mood)
+- UI Elements (Use of SVG, iconography)
+- Symmetry vs Asymmetry (Identify when asymmetry is good vs when it is bad)
+- Motion Choreography & Physics (GSAP vs CSS, easing, interaction feel)
 
 TOP 15 (THE WINNERS) DATA:
 {json.dumps(top_15_agg, indent=2)}
@@ -150,26 +161,23 @@ BOTTOM 15 (THE LOSERS) DATA:
 {json.dumps(bottom_15_agg, indent=2)}
 
 Output a comprehensive, highly-detailed Markdown report that covers:
-1. The Core Differences (Visual & Mathematical)
-2. Typography & Layout Systems (Density, Grids, Asymmetry)
-3. Motion & Physics (GSAP vs CSS, easing, interaction)
-4. The Definitive "Taste Tokens" (Actionable rules to achieve top-tier aesthetic)
+1. The Core Differences (Visual, Mathematical, and Emotional)
+2. Structural Systems (Typography, Grids, Asymmetry, Hero Sections)
+3. Aesthetic Elements (Color, Glassmorphism, Texture, Imagery, SVGs/Icons)
+4. Motion, Pace & Physics (GSAP, interaction feel, message-to-mood relation)
+5. The Definitive "Taste Tokens" (Highly specific, actionable rules to achieve a top-tier aesthetic based on the Winners)
 """
 
-    console.print(f"[cyan]Synthesizing structural differences with local Ollama model...[/cyan]")
-    
-    payload = {
-        "model": "llama3.1", # Or whichever model you are running locally (e.g. qwen2, llava)
-        "prompt": prompt,
-        "stream": False
-    }
+    console.print(f"[cyan]Synthesizing structural differences with {TASTE_MODEL}...[/cyan]")
     
     try:
-        req = requests.post(OLLAMA_URL, json=payload)
-        req.raise_for_status()
-        response_text = req.json().get("response", "")
+        response = completion(
+            model=TASTE_MODEL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        response_text = response.choices[0].message.content
     except Exception as e:
-        console.print(f"[red]Error connecting to Ollama at {OLLAMA_URL}: {e}[/red]")
+        console.print(f"[red]Error connecting to {TASTE_MODEL}: {e}[/red]")
         sys.exit(1)
     
     out_dir = Path(__file__).parent.parent / "results"

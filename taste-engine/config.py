@@ -19,13 +19,13 @@ ELO_FILE     = DATA_DIR / "elo_scores.json"
 DATA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
-# ── API ────────────────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL      = "claude-3-5-sonnet-20241022"
+# ── API Keys (Automatically picked up by litellm) ────────────────────────────
+# GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY should be set in .env
 
-# ── Local model (Ollama) ───────────────────────────────────────────────────
-OLLAMA_URL   = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llava:7b"
+# ── Unified Models (LiteLLM) ───────────────────────────────────────────────
+# Change this to "ollama/llama3.1", "claude-3-5-sonnet-20241022", "gpt-4o", etc.
+TASTE_MODEL = os.environ.get("TASTE_MODEL", "gemini/gemini-1.5-pro")
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "gemini/text-embedding-004")
 
 # ── Scraper ────────────────────────────────────────────────────────────────
 VIEWPORT     = {"width": 1440, "height": 900}
