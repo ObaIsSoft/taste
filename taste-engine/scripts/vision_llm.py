@@ -5,13 +5,13 @@ import sys
 import json
 import base64
 import time
-import requests
 from pathlib import Path
+from litellm import completion
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from config import DATA_DIR, OLLAMA_URL, OLLAMA_MODEL
+from config import DATA_DIR, VISION_MODEL
 
 console = Console()
 
@@ -42,19 +42,18 @@ def analyze_with_llava(site_id: str) -> dict | None:
         img_b64 = base64.b64encode(f.read()).decode("utf-8")
 
     try:
-        response = requests.post(
-            OLLAMA_URL,
-            json={
-                "model":  OLLAMA_MODEL,
-                "prompt": DESIGN_PROMPT,
-                "images": [img_b64],
-                "stream": False,
-                "options": {"temperature": 0.1},  # low temp = more deterministic
-            },
-            timeout=120,
+        response = completion(
+            model=VISION_MODEL,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": DESIGN_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}}
+                ]
+            }],
+            temperature=0.1
         )
-        response.raise_for_status()
-        raw = response.json().get("response", "").strip()
+        raw = response.choices[0].message.content.strip()
 
         # Strip markdown fences if present
         if raw.startswith("```"):
@@ -64,18 +63,18 @@ def analyze_with_llava(site_id: str) -> dict | None:
         raw = raw.strip().rstrip("```")
 
         analysis = json.loads(raw)
-        analysis["model"] = OLLAMA_MODEL
+        analysis["model"] = VISION_MODEL
         analysis["parse_error"] = False
 
     except json.JSONDecodeError:
-        console.print(f"[yellow]⚠ LLaVA JSON parse error for {site_id} — saving raw[/yellow]")
+        console.print(f"[yellow]⚠ JSON parse error for {site_id} — saving raw[/yellow]")
         analysis = {
-            "raw_response": response.json().get("response", ""),
+            "raw_response": raw,
             "parse_error": True,
-            "model": OLLAMA_MODEL,
+            "model": VISION_MODEL,
         }
     except Exception as e:
-        console.print(f"[red]✗ LLaVA failed for {site_id}: {e}[/red]")
+        console.print(f"[red]✗ Model request failed for {site_id}: {e}[/red]")
         return None
 
     (site_dir / "llava_analysis.json").write_text(json.dumps(analysis, indent=2))

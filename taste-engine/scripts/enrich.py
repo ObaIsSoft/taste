@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from rich.console import Console
 from litellm import completion
-from config import DATA_DIR, TASTE_MODEL, LOGS_DIR
+from config import DATA_DIR, VISION_MODEL, LOGS_DIR
 
 console = Console()
 
@@ -210,7 +210,7 @@ Respond ONLY with a valid JSON object:
 
     try:
         response = completion(
-            model=TASTE_MODEL,
+            model=VISION_MODEL,
             messages=[{"role": "user", "content": content_blocks}],
             max_tokens=2500
         )
@@ -225,7 +225,7 @@ Respond ONLY with a valid JSON object:
 
         result = json.loads(raw.strip())
         result["enriched_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        result["model"]       = TASTE_MODEL
+        result["model"]       = VISION_MODEL
 
         (site_dir / "taste_rationale.json").write_text(json.dumps(result, indent=2))
         console.print(f"[green]✓[/green] {site_id}: enriched with motion + taste analysis")
@@ -247,8 +247,8 @@ if __name__ == "__main__":
     parser.add_argument("--site", help="Enrich a single site ID")
     args = parser.parse_args()
 
-    if not TASTE_MODEL:
-        console.print("[red]✗ TASTE_MODEL not set in config.py[/red]")
+    if not VISION_MODEL:
+        console.print("[red]✗ VISION_MODEL not set in config.py[/red]")
         exit(1)
 
     # Load master dataset

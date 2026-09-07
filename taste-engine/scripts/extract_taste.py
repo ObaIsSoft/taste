@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
 from litellm import completion
-from config import DATA_DIR, TASTE_MODEL
+from config import DATA_DIR, REASONING_MODEL
 
 console = Console()
 
@@ -168,16 +168,16 @@ Output a comprehensive, highly-detailed Markdown report that covers:
 5. The Definitive "Taste Tokens" (Highly specific, actionable rules to achieve a top-tier aesthetic based on the Winners)
 """
 
-    console.print(f"[cyan]Synthesizing structural differences with {TASTE_MODEL}...[/cyan]")
+    console.print(f"[cyan]Synthesizing structural differences with {REASONING_MODEL}...[/cyan]")
     
     try:
         response = completion(
-            model=TASTE_MODEL,
+            model=REASONING_MODEL,
             messages=[{"role": "user", "content": prompt}]
         )
         response_text = response.choices[0].message.content
     except Exception as e:
-        console.print(f"[red]Error connecting to {TASTE_MODEL}: {e}[/red]")
+        console.print(f"[red]Error connecting to {REASONING_MODEL}: {e}[/red]")
         sys.exit(1)
     
     out_dir = Path(__file__).parent.parent / "results"

@@ -23,9 +23,10 @@ LOGS_DIR.mkdir(exist_ok=True)
 # GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY should be set in .env
 
 # ── Unified Models (LiteLLM) ───────────────────────────────────────────────
-# Change this to "ollama/llama3.1", "claude-3-5-sonnet-20241022", "gpt-4o", etc.
-TASTE_MODEL = os.environ.get("TASTE_MODEL", "gemini/gemini-1.5-pro")
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "gemini/text-embedding-004")
+# The local stack
+VISION_MODEL = os.environ.get("VISION_MODEL", "ollama/minicpm-v")
+REASONING_MODEL = os.environ.get("REASONING_MODEL", "ollama/deepseek-r1:8b")
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "ollama/nomic-embed-text")
 
 # ── Scraper ────────────────────────────────────────────────────────────────
 VIEWPORT     = {"width": 1440, "height": 900}
