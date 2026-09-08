@@ -205,6 +205,14 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
 
             time.sleep(3)  # Let entrance animations complete
 
+            # ── WebGL / Audio Interaction Trigger ──────────────────────────
+            # Many WebGL sites require a user click *anywhere* to start the experience
+            try:
+                page.mouse.click(VIEWPORT["width"] // 2, VIEWPORT["height"] // 2)
+                time.sleep(1.5)
+            except Exception:
+                pass
+
             # ── Step 1: Dismiss cookie banners & modals ────────────────────
             dismissed = _dismiss_overlays(page)
             if dismissed:
@@ -351,6 +359,21 @@ def _dismiss_overlays(page) -> int:
     Tries multiple strategies. Returns number of elements dismissed.
     Supports: English, Italian, French, Spanish, German consent text.
     """
+    def _try_native_click(el, p):
+        try:
+            box = el.bounding_box()
+            if box:
+                x = box["x"] + box["width"] / 2
+                y = box["y"] + box["height"] / 2
+                p.mouse.move(x, y)
+                p.mouse.click(x, y)
+                return True
+            else:
+                el.click(timeout=1000)
+                return True
+        except Exception:
+            return False
+
     dismissed = 0
 
     # ── Strategy 1: Click accept/close buttons by text ────────────────────
@@ -374,10 +397,10 @@ def _dismiss_overlays(page) -> int:
         try:
             btn = page.get_by_role("button", name=text, exact=False).first
             if btn.is_visible(timeout=500):
-                btn.click(timeout=1000)
-                dismissed += 1
-                time.sleep(0.4)
-                break
+                if _try_native_click(btn, page):
+                    dismissed += 1
+                    time.sleep(0.4)
+                    break
         except Exception:
             pass
 
@@ -386,33 +409,39 @@ def _dismiss_overlays(page) -> int:
         # English
         "Enter", "Enter site", "Enter experience", "Start", "Start experience",
         "Launch", "Play", "Discover", "Explore", "View site", "Click to enter",
-        "Tap to enter", "Enter the site",
+        "Tap to enter", "Enter the site", "Enter in silence",
         # French (since site-059 is French)
         "Entrer", "Découvrir", "Explorer", "Commencer"
     ]
 
-    for text in enter_texts:
-        try:
-            # We want exact=False to match "Enter the Experience" from "Enter"
-            btn = page.get_by_role("button", name=text, exact=False).first
-            if btn.is_visible(timeout=500):
-                btn.click(timeout=1000)
-                dismissed += 1
-                time.sleep(1.0) # These often trigger big WebGL transitions, wait a bit
-                break
-        except Exception:
-            pass
+    # WebGL loaders often take 5-10 seconds to hit 100% and reveal the Start button.
+    # We will poll for up to 10 seconds for these specific gates.
+    for _ in range(10):
+        for text in enter_texts:
+            try:
+                # We want exact=False to match "Enter the Experience" from "Enter"
+                btn = page.get_by_role("button", name=text, exact=False).first
+                if btn.is_visible(timeout=500):
+                    if _try_native_click(btn, page):
+                        dismissed += 1
+                        time.sleep(2.0) # These often trigger big WebGL transitions, wait a bit
+                        return dismissed
+            except Exception:
+                pass
+            
+            # Sometimes these aren't `<button>` tags, they are just `<a>` or `<div>`
+            try:
+                # case insensitive exact=False
+                link = page.get_by_text(text, exact=False).first
+                if link.is_visible(timeout=500):
+                    if _try_native_click(link, page):
+                        dismissed += 1
+                        time.sleep(2.0)
+                        return dismissed
+            except Exception:
+                pass
         
-        # Sometimes these aren't `<button>` tags, they are just `<a>` or `<div>`
-        try:
-            link = page.get_by_text(text, exact=True).first
-            if link.is_visible(timeout=500):
-                link.click(timeout=1000)
-                dismissed += 1
-                time.sleep(1.0)
-                break
-        except Exception:
-            pass
+        time.sleep(1.0) # wait 1s before polling again for the loader to finish
 
     # ── Strategy 2: Common cookie banner CSS selectors ─────────────────────
     if dismissed == 0:
@@ -436,10 +465,10 @@ def _dismiss_overlays(page) -> int:
             try:
                 el = page.query_selector(sel)
                 if el and el.is_visible():
-                    el.click()
-                    dismissed += 1
-                    time.sleep(0.4)
-                    break
+                    if _try_native_click(el, page):
+                        dismissed += 1
+                        time.sleep(0.4)
+                        break
             except Exception:
                 pass
 
@@ -460,10 +489,10 @@ def _dismiss_overlays(page) -> int:
         try:
             el = page.query_selector(sel)
             if el and el.is_visible():
-                el.click()
-                dismissed += 1
-                time.sleep(0.4)
-                break
+                if _try_native_click(el, page):
+                    dismissed += 1
+                    time.sleep(0.4)
+                    break
         except Exception:
             pass
 

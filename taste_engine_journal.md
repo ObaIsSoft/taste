@@ -137,3 +137,112 @@ We have finished gathering the data. Now we must build the AI that uses it.
 *   **Scale to 1,000 URLs:** Refactor `scraper.py` into `batch_scraper.py` to autonomously scrape 900 more sites using stealth proxies.
 *   **Figma Plugin Integration:** Wrap the Reference Analyzer endpoint into a lightweight Figma plugin API.
 *   **Motion Spec Generator:** Since we captured the GSAP code of the top sites, we can build a prompt generator that translates a visual reference directly into production-ready GSAP timelines.
+
+---
+
+## 7. Session: The Pipeline Audit & Visual Analysis Overhaul (Sep 8, 2026)
+
+### 7.1 The Problem: What Was Wrong With the Data
+
+After establishing the RLHF ground truth (620+ votes, TrueSkill stabilised), we attempted to run `extract_taste.py` to synthesise the "Rules of Taste." During this process, a deep audit of the pipeline revealed **three compounding data quality failures** that would have produced a meaningless or corrupted final report.
+
+#### Failure 1: `visual_analysis.json` Was Incomplete
+`analyzer.py` computes the following visual metrics from `screenshot_hero.png`:
+- `whitespace_ratio` — % of near-white + near-black pixels
+- `asymmetry_score` — luminance centre-of-mass offset from true centre
+- `color_variance` — RGB standard deviation across the 6-colour palette
+- `palette_mood` — categorical label (e.g. `dark-desaturated`, `balanced-midtones`)
+
+However, an earlier version of `analyzer.py` had a skip guard that prevented re-analysis if `visual_analysis.json` already existed. An older, incomplete version of the script had already created stub JSON files for all 100 sites (containing only `dominant_color`, `palette`, `scroll_depth_multiplier`). When the script was later upgraded with the full metric suite, it skipped all 100 sites. The result: **`extract_taste.py` was reading zeroes for whitespace, asymmetry, and color variance for every single site.** The Winners vs. Losers table was almost entirely noise.
+
+**Fix:** Removed the skip guard from `analyzer.py`. It now always overwrites.
+
+#### Failure 2: Video Data Was Completely Unused
+The pipeline had `preprocess_video.py` extracting structural keyframes from the `.webm` Playwright recordings using MSE-based scene detection (TorchCodec, MPS-accelerated). However, `extract_taste.py` never read `motion_storyboard.json` or the frames directory. The video dimension was **entirely absent** from the analytical table fed to the LLM.
+
+**Fix:** Updated `extract_taste.py` to read `motion_storyboard.json` and add a `Motion Shifts` column to the Markdown table.
+
+#### Failure 3: The Video Recordings Themselves Were Flawed
+When we inspected the actual `.webm` recordings (e.g. site-073: BotBlox Systems, site-007: DriveBerry), we found two major problems:
+
+1. **Loading screens captured as the first keyframe.** At t=1.3s, site-007 showed a gradient splash screen with "70%" progress — not the site's actual design. The MSE filter had no concept of "is this real content?", so it saved the loading screen as a valid keyframe.
+
+2. **Scroll was only 30 seconds long, followed by ~90 seconds of idle time.** The scraper loop was `while time.time() - scroll_start_time < 30`. At `SCROLL_SPEED = 80px` per tick with `SCROLL_PAUSE = 0.04s`, the viewport covered ~2,000px/sec. On a 10,000px page, scroll stalled within ~5 seconds. The remaining 25 seconds were dead, then Playwright sat idle. The `preprocess_video.py` sampling (2fps, no content filter) extracted frames from the idle period — resulting in 90% duplicate "frozen hero" frames fed to the vision LLM.
+
+### 7.2 The Fix: Redesigned Video Pipeline
+
+Added `is_content_frame()` — a three-check filter applied before saving any keyframe:
+
+```python
+def is_content_frame(tensor) -> bool:
+    if tensor.mean().item() > 0.92: return False      # near-white blank
+    if tensor.var().item() < 0.002: return False      # uniform gradient (loading screen)
+    gray = tensor.mean(dim=0, keepdim=True)
+    dx = (gray[:, :, 1:] - gray[:, :, :-1]).abs().mean().item()
+    dy = (gray[:, 1:, :] - gray[:-1, :, :]).abs().mean().item()
+    if (dx + dy) / 2 < 0.005: return False            # no edges = no text/UI
+    return True
+```
+
+Additional changes to `preprocess_video.py`:
+- `MSE_THRESHOLD`: `0.05` → `0.012` (catches subtler layout shifts)
+- `SAMPLE_FPS`: `2fps` → `1fps` (quality over quantity)
+- `MAX_KEYFRAMES`: capped at `37`
+
+Updated `config.py`:
+```python
+SCROLL_SPEED    = 250    # was 80px — 3× faster page coverage
+SCROLL_PAUSE    = 0.08
+SCROLL_DURATION = 90     # was hardcoded 30s
+REASONING_MODEL = "ollama/gemma4"  # was deepseek-r1:8b
+```
+
+### 7.3 The Unified Visual Analysis Strategy (Option A)
+
+**Decision:** Combine pixel-math analysis (screenshots) + Vision LLM analysis (video keyframes) into one unified `visual_analysis.json` per site.
+
+| Layer | Input | Model | Output |
+|---|---|---|---|
+| Math | `screenshot_hero.png` | None (Pillow) | Exact pixel metrics |
+| Vision LLM | Video keyframes (up to 37) | `minicpm-v` | Design language, scroll-arc description |
+
+**Why frames from video for minicpm-v, not the hero screenshot:**
+The hero screenshot is one frozen moment. The keyframe sequence captures the scroll arc — how layout, density, and colour shift as the user moves through the page. `minicpm-v` supports up to 64 images per inference call, so 20–37 sequential keyframes give it the full page experience.
+
+### 7.4 Local Model Stack (Final)
+
+After failed attempts with Gemini API (credits exhausted), NVIDIA NIM (API timeouts), and FCC proxy (404 on `/v1/chat/completions`), the pipeline is fully local:
+
+| Role | Model | Tool |
+|---|---|---|
+| Vision | `minicpm-v` | Ollama |
+| Embeddings | `nomic-embed-text` | Ollama |
+| Reasoning | `gemma4` (26B MoE, 3.8B active params) | Ollama |
+
+`deepseek-r1:8b` removed. `gemma4` was selected over `qwen2.5:14b` and `mistral-nemo:12b` due to MoE architecture (fast inference, ~10GB RAM on M1 Pro 16GB), frontier-class reasoning, and native structured output support.
+
+### 7.5 Data Housekeeping
+
+Deleted from all 100 site directories (stale/corrupted):
+- `visual_analysis.json`, `frames/`, `frames_manifest.json`, `motion_storyboard.json`
+- `taste_rationale.md`, `taste_rationale.json`, `llava_analysis.json`, `claude_rationale_raw.json`
+
+Also deleted at results level: `master_dataset.jsonl`, `winners_summaries.json`, `losers_summaries.json`
+
+**Preserved (safe):**
+- `metadata.json`, `motion_code.json` — DOM/animation extraction, clean
+- `screenshot_hero.png`, `screenshot_full.png` — taken before scroll, unaffected
+- `embedding.json` — will regenerate after new rationales
+- `.webm` recordings — content IS in the first 30s; idle tacked on after
+- **All RLHF votes / TrueSkill scores** — done by human judges, not derived from visual data. 100% valid.
+
+### 7.6 Regeneration Order (Next Steps)
+
+```
+1. python scripts/preprocess_video.py   # Re-extract clean keyframes (37-frame cap, content filter)
+2. python scripts/analyzer.py           # Re-run pixel math on all hero screenshots
+3. python scripts/enrich.py             # minicpm-v on keyframes → taste_rationale.md
+4. python scripts/embed_rationale.py    # nomic-embed-text → embedding.json
+5. python scripts/compile.py            # Rebuild master_dataset.jsonl
+6. python scripts/extract_taste.py      # Gemma 4 → taste_extraction_report.md (Rules of Taste)
+```

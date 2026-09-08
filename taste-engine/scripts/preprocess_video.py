@@ -38,30 +38,24 @@ SAMPLE_FPS = 1.0       # Sample at 1fps (was 2fps but with idle-time recordings,
 def is_content_frame(tensor) -> bool:
     """
     Returns True only if the frame contains real rendered website content.
-    Filters out:
-      - Loading screens / splash screens (near-uniform colour, minimal edges)
-      - Blank white / near-white pages
-      - Frozen / idle frames (handled separately via MSE)
-
-    Three checks:
-      1. Avg brightness < 0.92  (near-white blank = loading screen)
-      2. Pixel variance > 0.002 (flat uniform colour = splash gradient)
-      3. Edge density > 0.005   (Sobel-approx: text + UI elements have edges)
+    Expects a (C, H, W) tensor already normalised to [0,1].
+    Filters out loading screens, blank whites, and near-uniform gradients.
     """
     avg_brightness = tensor.mean().item()
-    if avg_brightness > 0.92:
+    variance = tensor.var().item()
+
+    gray = tensor.mean(dim=0)  # (H, W)
+    dx = (gray[:, 1:] - gray[:, :-1]).abs().mean().item()
+    dy = (gray[1:, :] - gray[:-1, :]).abs().mean().item()
+    edge_density = (dx + dy) / 2
+    
+    if avg_brightness > 0.96:
         return False  # near-white blank
 
-    variance = tensor.var().item()
     if variance < 0.002:
         return False  # too uniform — loading screen gradient
 
-    # Approximate edge density using pixel-difference in X and Y
-    gray = tensor.mean(dim=0, keepdim=True)  # (1, H, W)
-    dx = (gray[:, :, 1:] - gray[:, :, :-1]).abs().mean().item()
-    dy = (gray[:, 1:, :] - gray[:-1, :, :]).abs().mean().item()
-    edge_density = (dx + dy) / 2
-    if edge_density < 0.005:
+    if edge_density < 0.001:
         return False  # no edges = no text/UI visible
 
     return True
@@ -79,23 +73,25 @@ def process_video(site_id):
     
     console.print(f"[cyan]→[/cyan] Processing video for {site_id} using Batched TorchCodec...")
     
-    # 1. Hardware Acceleration (CUDA for NVIDIA, MPS for Apple Silicon)
+    # TorchCodec VideoDecoder only supports "cuda" or "cpu" — NOT "mps".
+    # We decode on CPU, then move tensors to MPS for fast MSE comparisons.
+    decode_device = "cuda" if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available():
-        device = "cuda"
+        compute_device = "cuda"
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        device = "mps"
+        compute_device = "mps"
     else:
-        device = "cpu"
+        compute_device = "cpu"
         
     try:
-        decoder = VideoDecoder(str(video_path), device=device)
+        decoder = VideoDecoder(str(video_path), device=decode_device)
         fps = decoder.metadata.average_fps if decoder.metadata.average_fps else 30.0
         total_frames = len(decoder)
-        
-    # Sample at SAMPLE_FPS
-    frame_interval = max(1, int(fps / SAMPLE_FPS))
-    sample_indices = list(range(0, total_frames, frame_interval))
-        
+
+        # Sample at SAMPLE_FPS
+        frame_interval = max(1, int(fps / SAMPLE_FPS))
+        sample_indices = list(range(0, total_frames, frame_interval))
+
         extracted_frames = []
         prev_downsampled = None
         
@@ -106,9 +102,9 @@ def process_video(site_id):
             # Fetch entire batch via C++ backend [Batch, Channels, Height, Width]
             batch = decoder.get_frames_at(indices=batch_indices)
             tensors = batch.data.float() / 255.0
+            tensors = tensors.to(compute_device)  # move to MPS/CUDA for fast ops
             
-            # 3. Downsample for structural comparison (Massive speedup + noise filtering)
-            # 128x128 ignores playing videos/cursors but catches modal opens and page scrolls
+            # 3. Downsample for structural comparison
             downsampled = F.interpolate(tensors, size=(128, 128), mode="bilinear", align_corners=False)
             
             for i in range(len(batch_indices)):
@@ -116,12 +112,12 @@ def process_video(site_id):
                 is_keyframe = False
                 
                 if prev_downsampled is None:
-                    # First frame — only accept if it's real content
-                    if is_content_frame(tensors[i]):
+                    # First frame — only accept if it's real content (use downsampled for consistency)
+                    if is_content_frame(current_ds):
                         is_keyframe = True
                 else:
                     mse = F.mse_loss(current_ds, prev_downsampled).item()
-                    if mse > MSE_THRESHOLD and is_content_frame(tensors[i]):
+                    if mse > MSE_THRESHOLD and is_content_frame(current_ds):
                         is_keyframe = True
                         
                 if is_keyframe and len(extracted_frames) < MAX_KEYFRAMES:
@@ -146,7 +142,7 @@ def process_video(site_id):
         manifest_path.write_text(json.dumps({
             "total_extracted": len(extracted_frames),
             "mse_threshold": MSE_THRESHOLD,
-            "device": device,
+            "device": compute_device,
             "frames": extracted_frames
         }, indent=2))
         
