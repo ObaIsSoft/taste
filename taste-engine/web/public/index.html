@@ -2,94 +2,561 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Taste Engine Validator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Taste Engine Arena — 1v1 Website Comparison</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background-color: #111; color: #fff; font-family: 'Inter', sans-serif; }
-        .image-container { max-height: 35vh; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid #333;}
-        @media (min-width: 768px) {
-            .image-container { height: 75vh; max-height: none; }
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        teal: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            200: '#99f6e4',
+                            300: '#5eead4',
+                            400: '#2dd4bf',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                            800: '#115e59',
+                            900: '#134e4a',
+                        },
+                        emerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                        }
+                    }
+                }
+            }
         }
-        .image-container img { width: 100%; display: block; }
-        .image-container::-webkit-scrollbar { width: 8px; }
-        .image-container::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+    </script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            background-image: 
+                radial-gradient(ellipse 80% 50% at 50% -15%, rgba(20, 184, 166, 0.12), transparent),
+                radial-gradient(ellipse 60% 40% at 90% 100%, rgba(16, 185, 129, 0.08), transparent),
+                radial-gradient(ellipse 50% 30% at 10% 90%, rgba(45, 212, 191, 0.06), transparent);
+            color: #0f172a;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+        }
+
+        /* Clean Glassmorphism for Light Theme */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+
+        .glass-card {
+            background: #ffffff;
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            box-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.06), 0 4px 6px -2px rgba(15, 23, 42, 0.03);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .glass-card:hover {
+            box-shadow: 0 20px 35px -12px rgba(13, 148, 136, 0.12), 0 8px 12px -4px rgba(15, 23, 42, 0.04);
+            border-color: rgba(45, 212, 191, 0.5);
+        }
+
+        /* Responsive Viewport Heights */
+        .viewport-container {
+            position: relative;
+            width: 100%;
+            background-color: #f1f5f9;
+            transition: height 0.25s ease-in-out;
+        }
+
+        /* Mobile Compact (Both mode) */
+        .vp-mobile-both {
+            height: 230px;
+        }
+        @media (min-width: 480px) {
+            .vp-mobile-both {
+                height: 270px;
+            }
+        }
+
+        /* Mobile Single Focused (Site A or B mode) */
+        .vp-mobile-single {
+            height: 52vh;
+            min-height: 340px;
+        }
+
+        /* Desktop Height */
+        @media (min-width: 1024px) {
+            .vp-desktop {
+                height: 60vh !important;
+                max-height: 620px;
+            }
+        }
+
+        /* Clean Custom Scrollbars */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(13, 148, 136, 0.35);
+            border-radius: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(13, 148, 136, 0.65);
+        }
+
+        /* Skeleton shimmer animation */
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .shimmer-loader::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+
+        /* Pulse glow for status badge */
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.15); }
+        }
+        .pulse-dot {
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
     </style>
 </head>
-<body class="flex flex-col min-h-screen overflow-y-auto overflow-x-hidden md:h-screen md:overflow-hidden">
-    
-    <header class="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-        <div>
-            <h1 class="text-xl font-bold tracking-tight">Taste Engine Validator</h1>
-            <p class="text-sm text-zinc-400">Matchmaking visually similar sites</p>
-        </div>
-        <div class="flex gap-4">
-            <a href="/leaderboard.html" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium transition-colors">View Leaderboard</a>
+<body class="flex flex-col min-h-screen text-slate-800 selection:bg-teal-500 selection:text-white pb-24 lg:pb-0">
+
+    <!-- ── TOP NAVIGATION ─────────────────────────────────────────────── -->
+    <header class="sticky top-0 z-50 glass-panel border-b border-slate-200/80 px-3.5 md:px-8 py-2.5 md:py-3 transition-all shadow-sm">
+        <div class="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
+            
+            <!-- Logo & Brand -->
+            <div class="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-400 p-[1px] shadow-md shadow-teal-600/20 flex-shrink-0">
+                    <div class="w-full h-full bg-white rounded-[11px] flex items-center justify-center">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5 text-teal-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </div>
+                </div>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-1.5 sm:gap-2">
+                        <span class="font-display font-bold text-base sm:text-lg tracking-tight text-slate-900 truncate">Taste Engine</span>
+                        <span class="text-[9px] sm:text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200/80 flex items-center gap-1 font-semibold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot"></span> Arena
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 hidden sm:block">Pairwise visual RLHF alignment</p>
+                </div>
+            </div>
+
+            <!-- View Mode Switcher (Hero / Full Page) -->
+            <div class="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200 shadow-inner flex-shrink-0">
+                <button id="viewHeroBtn" 
+                        class="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 bg-teal-600 text-white shadow-sm">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    <span>Hero</span>
+                    <span class="text-[10px] opacity-80 hidden md:inline font-mono">[F]</span>
+                </button>
+                <button id="viewFullBtn" 
+                        class="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 text-slate-600 hover:text-slate-900">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 13l-7 7-7-7m14-8l-7 7-7-7" />
+                    </svg>
+                    <span>Full</span>
+                    <span class="text-[10px] text-slate-400 hidden md:inline font-mono">Scroll</span>
+                </button>
+            </div>
+
+            <!-- Stats & Leaderboard -->
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <div class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/80 border border-slate-200/80 text-xs text-slate-600">
+                    <span class="text-slate-400">Votes:</span>
+                    <span id="sessionVoteCount" class="font-mono font-semibold text-teal-700">0</span>
+                </div>
+
+                <a href="/leaderboard.html" 
+                   class="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 hover:text-slate-900 border border-slate-200 shadow-sm transition-all flex items-center gap-1.5"
+                   title="Leaderboard">
+                    <svg class="w-3.5 h-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                        <path d="M4 22h16"></path>
+                        <path d="M10 14.66V17c0 .55-.45 1-1 1H7"></path>
+                        <path d="M14 14.66V17c0 .55.45 1 1 1h2"></path>
+                        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+                    </svg>
+                    <span class="hidden sm:inline">Leaderboard</span>
+                </a>
+            </div>
+
         </div>
     </header>
 
-    <main class="flex-1 p-4 md:p-6 flex flex-col md:flex-row gap-4 md:gap-6" id="matchArea">
-        <!-- Site A -->
-        <div class="flex-1 flex flex-col gap-4">
-            <div class="flex justify-between items-center">
-                <h2 id="titleA" class="font-semibold text-lg truncate">Loading...</h2>
-                <span id="scoreA" class="text-xs font-mono text-zinc-500"></span>
-            </div>
-            <div class="image-container cursor-pointer hover:border-blue-500 transition-colors" id="containerA">
-                <img id="imgA" src="" alt="Site A">
-            </div>
-            <button id="btnA" class="w-full py-4 rounded-xl bg-zinc-800 hover:bg-blue-600 text-lg font-bold transition-colors">A is Better</button>
+    <!-- ── MOBILE FOCUSED SITE SWITCHER (<lg only) ─────────────────────── -->
+    <div class="lg:hidden px-4 pt-2.5 pb-1 max-w-lg mx-auto w-full">
+        <div class="grid grid-cols-3 bg-slate-100 p-1 rounded-xl border border-slate-200 text-center text-xs font-semibold">
+            <button id="tabBoth" class="py-1.5 rounded-lg bg-teal-600 text-white shadow-sm transition-all">Both</button>
+            <button id="tabSiteA" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center justify-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                <span id="tabLabelA">Site A</span>
+            </button>
+            <button id="tabSiteB" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center justify-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span id="tabLabelB">Site B</span>
+            </button>
         </div>
+    </div>
 
-        <div class="flex flex-row md:flex-col justify-center items-center gap-4 md:gap-6 py-2 md:py-0">
-            <div class="text-zinc-600 font-bold italic text-xl md:text-2xl">VS</div>
-            <button id="skipBtn" class="px-6 py-3 md:px-0 md:py-0 rounded-full bg-zinc-800 hover:bg-zinc-700 text-sm font-bold shadow-lg transition-colors border border-zinc-700 md:w-24 md:h-24 flex items-center justify-center text-center">Skip / Draw</button>
+    <!-- ── DESKTOP KEYBOARD HINTS BANNER ──────────────────────────────── -->
+    <div class="hidden lg:flex max-w-7xl mx-auto w-full px-8 pt-3.5 pb-1 justify-between items-center text-[11px] text-slate-500">
+        <div class="flex items-center gap-2">
+            <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-teal-800 font-mono text-[10px] font-semibold">Criteria</span>
+            <span>Evaluate aesthetics, typographic tension, layout balance, and visual prestige.</span>
         </div>
+        <div class="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+            <span><kbd class="px-1.5 py-0.5 rounded bg-white border border-slate-300 text-slate-700 shadow-sm">1</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-white border border-slate-300 text-slate-700 shadow-sm">A</kbd> Left</span>
+            <span><kbd class="px-1.5 py-0.5 rounded bg-white border border-slate-300 text-slate-700 shadow-sm">2</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-white border border-slate-300 text-slate-700 shadow-sm">B</kbd> Right</span>
+            <span><kbd class="px-1.5 py-0.5 rounded bg-white border border-slate-300 text-slate-700 shadow-sm">Space</kbd> Skip</span>
+        </div>
+    </div>
 
-        <!-- Site B -->
-        <div class="flex-1 flex flex-col gap-4">
-            <div class="flex justify-between items-center">
-                <h2 id="titleB" class="font-semibold text-lg truncate">Loading...</h2>
-                <span id="scoreB" class="text-xs font-mono text-zinc-500"></span>
+    <!-- ── MAIN COMPARISON ARENA ──────────────────────────────────────── -->
+    <main class="flex-1 max-w-7xl mx-auto w-full p-3 sm:p-4 lg:p-6 flex flex-col justify-center" id="matchArea">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-3 lg:gap-6 items-stretch">
+            
+            <!-- ── CARD SITE A ────────────────────────────────────────────── -->
+            <section id="cardA" class="glass-card rounded-2xl flex flex-col overflow-hidden">
+                
+                <!-- Browser Chrome Header -->
+                <div class="px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
+                        </div>
+                        <div class="ml-1 sm:ml-2 px-2.5 py-0.5 rounded-md bg-white border border-slate-200 flex items-center gap-1.5 text-xs font-mono text-slate-700 shadow-2xs min-w-0">
+                            <span class="w-1.5 h-1.5 rounded-full bg-teal-500 flex-shrink-0"></span>
+                            <span id="titleA" class="truncate font-semibold text-xs text-slate-900">site-???</span>
+                        </div>
+                    </div>
+
+                    <!-- TrueSkill pill & Fullscreen link -->
+                    <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                        <div id="scoreA" class="px-2.5 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-[10px] sm:text-[11px] font-mono text-teal-800 font-medium flex items-center gap-1 sm:gap-1.5">
+                            <span>μ: --</span>
+                            <span class="text-teal-300">|</span>
+                            <span class="text-teal-600">σ: --</span>
+                        </div>
+                        <a id="linkA" href="#" target="_blank" title="Inspect Fullscreen" class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Viewport -->
+                <div class="relative flex-1 bg-slate-100/70 border-b border-slate-200/80">
+                    <div id="scrollHintA" class="hidden absolute top-2 right-2 z-10 px-2 py-0.5 rounded-full bg-white/90 backdrop-blur border border-slate-200 text-[9px] sm:text-[10px] text-slate-600 font-mono shadow-sm pointer-events-none">
+                        Scroll to explore ↓
+                    </div>
+
+                    <div id="containerA" class="viewport-container vp-mobile-both vp-desktop custom-scroll w-full flex items-center justify-center overflow-hidden">
+                        <div id="loaderA" class="absolute inset-0 shimmer-loader bg-slate-100/90 flex items-center justify-center z-10 transition-opacity duration-300">
+                            <span class="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></span>
+                        </div>
+                        <img id="imgA" 
+                             src="" 
+                             alt="Site A Preview" 
+                             class="w-full h-full object-contain object-top block transition-opacity duration-300 opacity-0 select-none pointer-events-none">
+                    </div>
+                </div>
+
+                <!-- Desktop In-card Vote Button (Hidden on mobile) -->
+                <div class="hidden lg:block p-3 bg-white">
+                    <button id="btnA" 
+                            class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 active:scale-[0.98] text-white font-display font-semibold text-base shadow-md shadow-teal-600/20 hover:shadow-teal-600/30 transition-all duration-150 flex items-center justify-center gap-2 group/btn">
+                        <span>Vote Site A</span>
+                        <kbd class="px-2 py-0.5 rounded bg-white/20 text-xs font-mono text-white group-hover/btn:bg-white/30">A</kbd>
+                    </button>
+                </div>
+            </section>
+
+            <!-- ── CENTER DIVIDER & DESKTOP SKIP ─────────────────────────── -->
+            <div id="dividerCenter" class="flex flex-row lg:flex-col justify-center items-center gap-2 sm:gap-3 lg:gap-5 py-1 lg:py-0">
+                <div class="relative flex items-center justify-center">
+                    <div class="absolute -inset-1 rounded-full bg-gradient-to-r from-teal-400 to-emerald-400 opacity-25 blur-md"></div>
+                    <div class="relative w-8 h-8 sm:w-10 sm:h-10 lg:w-14 lg:h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-md">
+                        <span class="font-display font-bold italic text-xs sm:text-sm lg:text-lg text-teal-800">VS</span>
+                    </div>
+                </div>
+
+                <!-- Desktop Skip Button -->
+                <button id="skipBtn" 
+                        class="hidden lg:flex px-5 py-3.5 lg:w-28 rounded-xl bg-white hover:bg-slate-50 active:scale-95 text-xs font-semibold text-slate-700 hover:text-slate-900 border border-slate-200 shadow-sm transition-all flex-col items-center justify-center gap-1 group">
+                    <span class="flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                        </svg>
+                        <span>Draw / Skip</span>
+                    </span>
+                    <span class="text-[10px] text-slate-400 font-mono">[Space]</span>
+                </button>
             </div>
-            <div class="image-container cursor-pointer hover:border-blue-500 transition-colors" id="containerB">
-                <img id="imgB" src="" alt="Site B">
-            </div>
-            <button id="btnB" class="w-full py-4 rounded-xl bg-zinc-800 hover:bg-blue-600 text-lg font-bold transition-colors">B is Better</button>
+
+            <!-- ── CARD SITE B ────────────────────────────────────────────── -->
+            <section id="cardB" class="glass-card rounded-2xl flex flex-col overflow-hidden">
+                
+                <!-- Browser Chrome Header -->
+                <div class="px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
+                        </div>
+                        <div class="ml-1 sm:ml-2 px-2.5 py-0.5 rounded-md bg-white border border-slate-200 flex items-center gap-1.5 text-xs font-mono text-slate-700 shadow-2xs min-w-0">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                            <span id="titleB" class="truncate font-semibold text-xs text-slate-900">site-???</span>
+                        </div>
+                    </div>
+
+                    <!-- TrueSkill pill & Fullscreen link -->
+                    <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                        <div id="scoreB" class="px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-[10px] sm:text-[11px] font-mono text-emerald-800 font-medium flex items-center gap-1 sm:gap-1.5">
+                            <span>μ: --</span>
+                            <span class="text-emerald-300">|</span>
+                            <span class="text-emerald-600">σ: --</span>
+                        </div>
+                        <a id="linkB" href="#" target="_blank" title="Inspect Fullscreen" class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Viewport -->
+                <div class="relative flex-1 bg-slate-100/70 border-b border-slate-200/80">
+                    <div id="scrollHintB" class="hidden absolute top-2 right-2 z-10 px-2 py-0.5 rounded-full bg-white/90 backdrop-blur border border-slate-200 text-[9px] sm:text-[10px] text-slate-600 font-mono shadow-sm pointer-events-none">
+                        Scroll to explore ↓
+                    </div>
+
+                    <div id="containerB" class="viewport-container vp-mobile-both vp-desktop custom-scroll w-full flex items-center justify-center overflow-hidden">
+                        <div id="loaderB" class="absolute inset-0 shimmer-loader bg-slate-100/90 flex items-center justify-center z-10 transition-opacity duration-300">
+                            <span class="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></span>
+                        </div>
+                        <img id="imgB" 
+                             src="" 
+                             alt="Site B Preview" 
+                             class="w-full h-full object-contain object-top block transition-opacity duration-300 opacity-0 select-none pointer-events-none">
+                    </div>
+                </div>
+
+                <!-- Desktop In-card Vote Button (Hidden on mobile) -->
+                <div class="hidden lg:block p-3 bg-white">
+                    <button id="btnB" 
+                            class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 active:scale-[0.98] text-white font-display font-semibold text-base shadow-md shadow-emerald-600/20 hover:shadow-emerald-600/30 transition-all duration-150 flex items-center justify-center gap-2 group/btn">
+                        <span>Vote Site B</span>
+                        <kbd class="px-2 py-0.5 rounded bg-white/20 text-xs font-mono text-white group-hover/btn:bg-white/30">B</kbd>
+                    </button>
+                </div>
+            </section>
+
         </div>
     </main>
 
-    <!-- Full page toggle -->
-    <div class="p-4 flex justify-center gap-4 bg-black">
-        <button id="toggleViewBtn" class="text-sm text-zinc-400 hover:text-white underline">View Full Pages</button>
+    <!-- ── MOBILE PERSISTENT BOTTOM VOTING DOCK (<lg) ──────────────────── -->
+    <div class="lg:hidden fixed bottom-0 left-0 right-0 z-40 glass-panel border-t border-slate-200/90 p-3 px-4 shadow-xl">
+        <div class="max-w-md mx-auto flex items-center gap-2.5">
+            <button id="mobileBtnA" 
+                    class="flex-1 py-3 px-3 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 active:scale-95 text-white font-display font-semibold text-sm shadow-md shadow-teal-600/25 flex items-center justify-center gap-1.5 truncate">
+                <span>Vote A</span>
+                <span id="mobileLabelA" class="text-[11px] opacity-80 font-mono truncate"></span>
+            </button>
+            
+            <button id="mobileSkipBtn" 
+                    class="py-3 px-3.5 rounded-xl bg-slate-100 active:scale-95 text-xs font-semibold text-slate-700 border border-slate-200 flex items-center justify-center">
+                <span>Skip</span>
+            </button>
+
+            <button id="mobileBtnB" 
+                    class="flex-1 py-3 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 active:scale-95 text-white font-display font-semibold text-sm shadow-md shadow-emerald-600/25 flex items-center justify-center gap-1.5 truncate">
+                <span>Vote B</span>
+                <span id="mobileLabelB" class="text-[11px] opacity-80 font-mono truncate"></span>
+            </button>
+        </div>
     </div>
 
+    <!-- ── DESKTOP FOOTER ─────────────────────────────────────────────── -->
+    <footer class="hidden lg:block py-3 px-6 border-t border-slate-200/80 text-center text-xs text-slate-500 bg-white/60">
+        <span>TrueSkill convergence matchmaking · Dynamically pairs sites with overlapping latent vectors and high uncertainty</span>
+    </footer>
+
+    <!-- ── JAVASCRIPT LOGIC ───────────────────────────────────────────── -->
     <script>
         let currentA = null;
         let currentB = null;
         let viewMode = 'hero'; // 'hero' or 'full'
+        let mobileTab = 'both'; // 'both', 'a', or 'b'
+        let sessionVotes = 0;
+        let isSubmitting = false;
 
         const imgA = document.getElementById('imgA');
         const imgB = document.getElementById('imgB');
+        const loaderA = document.getElementById('loaderA');
+        const loaderB = document.getElementById('loaderB');
+        const containerA = document.getElementById('containerA');
+        const containerB = document.getElementById('containerB');
+        const cardA = document.getElementById('cardA');
+        const cardB = document.getElementById('cardB');
+        const dividerCenter = document.getElementById('dividerCenter');
+        const scrollHintA = document.getElementById('scrollHintA');
+        const scrollHintB = document.getElementById('scrollHintB');
+        const sessionCountEl = document.getElementById('sessionVoteCount');
+
+        const viewHeroBtn = document.getElementById('viewHeroBtn');
+        const viewFullBtn = document.getElementById('viewFullBtn');
+
+        const tabBoth = document.getElementById('tabBoth');
+        const tabSiteA = document.getElementById('tabSiteA');
+        const tabSiteB = document.getElementById('tabSiteB');
+        const tabLabelA = document.getElementById('tabLabelA');
+        const tabLabelB = document.getElementById('tabLabelB');
+        const mobileLabelA = document.getElementById('mobileLabelA');
+        const mobileLabelB = document.getElementById('mobileLabelB');
+
+        // Setup image load state handlers
+        imgA.addEventListener('load', () => {
+            imgA.classList.remove('opacity-0');
+            loaderA.classList.add('opacity-0');
+            setTimeout(() => loaderA.classList.add('hidden'), 300);
+        });
+
+        imgB.addEventListener('load', () => {
+            imgB.classList.remove('opacity-0');
+            loaderB.classList.add('opacity-0');
+            setTimeout(() => loaderB.classList.add('hidden'), 300);
+        });
+
+        function setViewMode(mode) {
+            viewMode = mode;
+            if (mode === 'hero') {
+                viewHeroBtn.className = 'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 bg-teal-600 text-white shadow-sm';
+                viewFullBtn.className = 'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 text-slate-600 hover:text-slate-900';
+
+                containerA.classList.remove('overflow-y-auto', 'cursor-ns-resize');
+                containerA.classList.add('overflow-hidden');
+                containerB.classList.remove('overflow-y-auto', 'cursor-ns-resize');
+                containerB.classList.add('overflow-hidden');
+
+                imgA.className = 'w-full h-full object-contain object-top block transition-opacity duration-300 select-none pointer-events-none';
+                imgB.className = 'w-full h-full object-contain object-top block transition-opacity duration-300 select-none pointer-events-none';
+
+                scrollHintA.classList.add('hidden');
+                scrollHintB.classList.add('hidden');
+            } else {
+                viewFullBtn.className = 'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 bg-teal-600 text-white shadow-sm';
+                viewHeroBtn.className = 'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1 sm:gap-1.5 text-slate-600 hover:text-slate-900';
+
+                containerA.classList.remove('overflow-hidden');
+                containerA.classList.add('overflow-y-auto', 'cursor-ns-resize');
+                containerB.classList.remove('overflow-hidden');
+                containerB.classList.add('overflow-y-auto', 'cursor-ns-resize');
+
+                imgA.className = 'w-full h-auto block transition-opacity duration-300 select-none';
+                imgB.className = 'w-full h-auto block transition-opacity duration-300 select-none';
+
+                scrollHintA.classList.remove('hidden');
+                scrollHintB.classList.remove('hidden');
+            }
+            updateImages();
+        }
+
+        viewHeroBtn.addEventListener('click', () => setViewMode('hero'));
+        viewFullBtn.addEventListener('click', () => setViewMode('full'));
+
+        // Mobile Focused Tab Switcher Logic
+        function setMobileTab(tab) {
+            mobileTab = tab;
+            const activeClass = 'py-1.5 rounded-lg bg-teal-600 text-white shadow-sm transition-all';
+            const inactiveClass = 'py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center justify-center gap-1';
+
+            tabBoth.className = tab === 'both' ? activeClass : 'py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition-all';
+            tabSiteA.className = tab === 'a' ? activeClass : inactiveClass;
+            tabSiteB.className = tab === 'b' ? activeClass : inactiveClass;
+
+            if (tab === 'both') {
+                cardA.classList.remove('hidden');
+                cardB.classList.remove('hidden');
+                dividerCenter.classList.remove('hidden');
+                containerA.classList.remove('vp-mobile-single');
+                containerA.classList.add('vp-mobile-both');
+                containerB.classList.remove('vp-mobile-single');
+                containerB.classList.add('vp-mobile-both');
+            } else if (tab === 'a') {
+                cardA.classList.remove('hidden');
+                cardB.classList.add('hidden');
+                dividerCenter.classList.add('hidden');
+                containerA.classList.remove('vp-mobile-both');
+                containerA.classList.add('vp-mobile-single');
+            } else if (tab === 'b') {
+                cardA.classList.add('hidden');
+                cardB.classList.remove('hidden');
+                dividerCenter.classList.add('hidden');
+                containerB.classList.remove('vp-mobile-both');
+                containerB.classList.add('vp-mobile-single');
+            }
+        }
+
+        tabBoth.addEventListener('click', () => setMobileTab('both'));
+        tabSiteA.addEventListener('click', () => setMobileTab('a'));
+        tabSiteB.addEventListener('click', () => setMobileTab('b'));
 
         async function loadNextPair() {
             try {
+                loaderA.classList.remove('hidden', 'opacity-0');
+                loaderB.classList.remove('hidden', 'opacity-0');
+                imgA.classList.add('opacity-0');
+                imgB.classList.add('opacity-0');
+
                 const res = await fetch('/api/next_pair');
                 if (!res.ok) throw new Error("Failed to load pair");
                 const data = await res.json();
                 
                 if (data.status === "complete") {
-                    document.getElementById("matchArea").innerHTML = `
-                        <div class="flex-1 flex flex-col justify-center items-center gap-6 py-20 text-center">
-                            <div class="w-24 h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-4">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-                            </div>
-                            <h2 class="text-4xl font-bold tracking-tight">Phase 1 Voting Complete!</h2>
-                            <p class="text-zinc-400 text-lg max-w-md">The TrueSkill algorithm has successfully stabilized the dataset. You have gathered enough human feedback to train the Taste Engine.</p>
-                            <a href="/leaderboard.html" class="mt-8 px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-lg font-bold shadow-lg transition-colors">View Top 15 Leaderboard</a>
-                        </div>
-                    `;
-                    document.getElementById("toggleViewBtn").style.display = "none";
+                    renderCompletionScreen();
                     return;
                 }
 
@@ -97,63 +564,126 @@
                 currentB = data.site_b;
                 
                 document.getElementById('titleA').textContent = currentA.site_id;
-                document.getElementById('scoreA').textContent = `Mu: ${currentA.mu.toFixed(1)} | Σ: ${currentA.sigma.toFixed(1)}`;
-                
+                document.getElementById('scoreA').innerHTML = `<span>μ: ${currentA.mu.toFixed(1)}</span><span class="text-teal-300">|</span><span class="text-teal-600">σ: ${currentA.sigma.toFixed(1)}</span>`;
+                document.getElementById('linkA').href = `/data/${currentA.site_id}/screenshot_full.png`;
+                tabLabelA.textContent = currentA.site_id;
+                mobileLabelA.textContent = `(${currentA.site_id})`;
+
                 document.getElementById('titleB').textContent = currentB.site_id;
-                document.getElementById('scoreB').textContent = `Mu: ${currentB.mu.toFixed(1)} | Σ: ${currentB.sigma.toFixed(1)}`;
+                document.getElementById('scoreB').innerHTML = `<span>μ: ${currentB.mu.toFixed(1)}</span><span class="text-emerald-300">|</span><span class="text-emerald-600">σ: ${currentB.sigma.toFixed(1)}</span>`;
+                document.getElementById('linkB').href = `/data/${currentB.site_id}/screenshot_full.png`;
+                tabLabelB.textContent = currentB.site_id;
+                mobileLabelB.textContent = `(${currentB.site_id})`;
 
                 updateImages();
+                isSubmitting = false;
                 
             } catch(e) {
                 console.error(e);
-                document.getElementById('titleA').textContent = "Error loading data.";
+                document.getElementById('titleA').textContent = "Error loading data";
+                isSubmitting = false;
             }
         }
 
         function updateImages() {
-            if(!currentA || !currentB) return;
-            const imgPath = viewMode === 'hero' ? 'screenshot_hero.png' : 'screenshot_full.png';
-            imgA.src = `/data/${currentA.site_id}/${imgPath}`;
-            imgB.src = `/data/${currentB.site_id}/${imgPath}`;
+            if (!currentA || !currentB) return;
+            const imgFile = viewMode === 'hero' ? 'screenshot_hero.png' : 'screenshot_full.png';
+            imgA.src = `/data/${currentA.site_id}/${imgFile}`;
+            imgB.src = `/data/${currentB.site_id}/${imgFile}`;
             
-            // Scroll containers back to top
-            document.getElementById('containerA').scrollTop = 0;
-            document.getElementById('containerB').scrollTop = 0;
+            containerA.scrollTop = 0;
+            containerB.scrollTop = 0;
         }
 
         async function submitVote(winnerId, loserId, isDraw = false) {
-            // Optimistic UI clear
-            imgA.src = ""; imgB.src = "";
-            document.getElementById('titleA').textContent = "Submitting vote...";
-            document.getElementById('titleB').textContent = "Submitting vote...";
+            if (isSubmitting || !currentA || !currentB) return;
+            isSubmitting = true;
 
-            await fetch('/api/vote', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ winner_id: winnerId, loser_id: loserId, is_draw: isDraw })
-            });
+            sessionVotes++;
+            if (sessionCountEl) sessionCountEl.textContent = sessionVotes;
+
+            try {
+                await fetch('/api/vote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ winner_id: winnerId, loser_id: loserId, is_draw: isDraw })
+                });
+            } catch (err) {
+                console.error("Failed to submit vote:", err);
+            }
 
             loadNextPair();
         }
 
-        document.getElementById('btnA').addEventListener('click', () => submitVote(currentA.site_id, currentB.site_id));
-        document.getElementById('btnB').addEventListener('click', () => submitVote(currentB.site_id, currentA.site_id));
-        
-        document.getElementById('containerA').addEventListener('click', () => submitVote(currentA.site_id, currentB.site_id));
-        document.getElementById('containerB').addEventListener('click', () => submitVote(currentB.site_id, currentA.site_id));
+        // Desktop Button Triggers
+        document.getElementById('btnA').addEventListener('click', () => {
+            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id);
+        });
+
+        document.getElementById('btnB').addEventListener('click', () => {
+            if (currentA && currentB) submitVote(currentB.site_id, currentA.site_id);
+        });
 
         document.getElementById('skipBtn').addEventListener('click', () => {
-            // Pass true for isDraw
-            submitVote(currentA.site_id, currentB.site_id, true);
+            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id, true);
         });
 
-        document.getElementById('toggleViewBtn').addEventListener('click', (e) => {
-            viewMode = viewMode === 'hero' ? 'full' : 'hero';
-            e.target.textContent = viewMode === 'hero' ? 'View Full Pages' : 'View Hero Screenshots';
-            updateImages();
+        // Mobile Dock Button Triggers
+        document.getElementById('mobileBtnA').addEventListener('click', () => {
+            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id);
         });
 
-        // Init
+        document.getElementById('mobileBtnB').addEventListener('click', () => {
+            if (currentA && currentB) submitVote(currentB.site_id, currentA.site_id);
+        });
+
+        document.getElementById('mobileSkipBtn').addEventListener('click', () => {
+            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id, true);
+        });
+
+        // Keyboard Shortcuts
+        window.addEventListener('keydown', (e) => {
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+            if (e.key === '1' || e.key === 'a' || e.key === 'A') {
+                e.preventDefault();
+                if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id);
+            } else if (e.key === '2' || e.key === 'b' || e.key === 'B') {
+                e.preventDefault();
+                if (currentA && currentB) submitVote(currentB.site_id, currentA.site_id);
+            } else if (e.code === 'Space' || e.key === 's' || e.key === 'S') {
+                e.preventDefault();
+                if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id, true);
+            } else if (e.key === 'f' || e.key === 'F') {
+                e.preventDefault();
+                setViewMode(viewMode === 'hero' ? 'full' : 'hero');
+            }
+        });
+
+        function renderCompletionScreen() {
+            document.getElementById("matchArea").innerHTML = `
+                <div class="max-w-xl mx-auto py-12 px-6 sm:px-8 rounded-3xl glass-card text-center flex flex-col items-center gap-6 border border-emerald-200 shadow-xl">
+                    <div class="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-2xl flex items-center justify-center shadow-md">
+                        <svg class="w-8 h-8 sm:w-10 sm:h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Phase 1 Voting Complete</h2>
+                        <p class="text-slate-600 text-xs sm:text-sm mt-2 leading-relaxed">The TrueSkill ratings have stabilized with sufficient pairwise comparisons. The design taste dataset is ready for synthesis.</p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-3 w-full mt-2 sm:mt-4">
+                        <a href="/leaderboard.html" class="flex-1 py-3 px-6 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-semibold text-sm shadow-md shadow-teal-600/30 transition-all text-center">
+                            Explore Top 15 Leaderboard →
+                        </a>
+                    </div>
+                </div>
+            `;
+            const dock = document.querySelector('.lg\\:hidden.fixed.bottom-0');
+            if (dock) dock.style.display = 'none';
+        }
+
+        // Initialize first pair
         loadNextPair();
     </script>
 </body>
