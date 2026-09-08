@@ -20,7 +20,7 @@ console = Console()
 
 def generate_embedding(site_id: str):
     site_dir = DATA_DIR / site_id
-    rationale_path = site_dir / "taste_rationale.md"
+    rationale_path = site_dir / "taste_rationale.json"
     embed_path = site_dir / "embedding.json"
 
     if not rationale_path.exists():
@@ -55,6 +55,6 @@ if __name__ == "__main__":
         generate_embedding(args.site)
     else:
         for site_dir in sorted(DATA_DIR.iterdir()):
-            if site_dir.is_dir() and (site_dir / "taste_rationale.md").exists():
+            if site_dir.is_dir() and (site_dir / "taste_rationale.json").exists():
                 generate_embedding(site_dir.name)
                 time.sleep(1)  # respect rate limits

@@ -6,7 +6,7 @@
     <title>Taste Engine — TrueSkill Leaderboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -14,7 +14,7 @@
                 extend: {
                     fontFamily: {
                         sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-                        serif: ['"Instrument Serif"', 'Georgia', 'serif'],
+                        display: ['"Space Grotesk"', 'sans-serif'],
                         mono: ['"JetBrains Mono"', 'monospace'],
                     },
                     colors: {
@@ -41,7 +41,7 @@
             color: #171614;
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
-            letter-spacing: -0.01em;
+            letter-spacing: -0.015em;
         }
 
         .hairline-border {
@@ -55,12 +55,12 @@
         <!-- Header -->
         <header class="flex flex-col sm:flex-row justify-between items-start sm:items-baseline gap-4 mb-8 pb-5 border-b border-[#dedad0]">
             <div>
-                <h1 class="font-serif italic text-3xl md:text-4xl text-stone-900 tracking-tight">Taste Engine Leaderboard</h1>
-                <p class="text-xs font-mono uppercase tracking-[0.15em] text-stone-500 mt-1.5">TrueSkill Ranking Index · Conservative Score: <span class="text-stone-800 font-semibold">μ − 3σ</span></p>
+                <h1 class="font-display font-bold text-2xl md:text-3xl text-stone-900 tracking-tight">Taste Engine Leaderboard</h1>
+                <p class="text-xs font-mono uppercase tracking-[0.16em] text-stone-500 mt-1.5">TrueSkill Ranking Index · Conservative Score: <span class="text-stone-800 font-semibold">μ − 3σ</span></p>
             </div>
 
             <a href="/" 
-               class="px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-xs font-mono tracking-wider uppercase text-stone-50 transition-all flex items-center gap-2">
+               class="px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-xs font-mono tracking-wider uppercase text-stone-50 transition-all flex items-center gap-2 shadow-xs">
                 <span>← Return to Arena</span>
             </a>
         </header>
@@ -107,11 +107,11 @@
                     tr.className = 'hover:bg-[#faf9f6] transition-colors';
                     
                     const rankNum = String(index + 1).padStart(2, '0');
-                    let rankBadge = `<span class="text-stone-400">${rankNum}</span>`;
+                    let rankBadge = `<span class="text-stone-400 font-mono">${rankNum}</span>`;
                     if (index === 0) {
-                        rankBadge = `<span class="text-stone-900 font-semibold underline decoration-stone-400">${rankNum}</span>`;
+                        rankBadge = `<span class="text-stone-900 font-bold underline decoration-stone-400 font-mono">${rankNum}</span>`;
                     } else if (index < 3) {
-                        rankBadge = `<span class="text-stone-900 font-medium">${rankNum}</span>`;
+                        rankBadge = `<span class="text-stone-900 font-semibold font-mono">${rankNum}</span>`;
                     }
 
                     tr.innerHTML = `
@@ -124,10 +124,10 @@
                                 </svg>
                             </a>
                         </td>
-                        <td class="py-3.5 px-5 font-semibold text-stone-900 text-sm">${site.score.toFixed(2)}</td>
-                        <td class="py-3.5 px-5 text-stone-600">${site.mu.toFixed(2)}</td>
-                        <td class="py-3.5 px-5 text-stone-400">${site.sigma.toFixed(2)}</td>
-                        <td class="py-3.5 px-5 text-stone-700">
+                        <td class="py-3.5 px-5 font-bold font-mono text-stone-900 text-sm">${site.score.toFixed(2)}</td>
+                        <td class="py-3.5 px-5 text-stone-600 font-mono">${site.mu.toFixed(2)}</td>
+                        <td class="py-3.5 px-5 text-stone-400 font-mono">${site.sigma.toFixed(2)}</td>
+                        <td class="py-3.5 px-5 text-stone-700 font-mono">
                             <span>${site.wins || 0}W</span>
                             <span class="text-stone-300 px-1">·</span>
                             <span>${site.losses || 0}L</span>

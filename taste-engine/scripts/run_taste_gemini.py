@@ -20,12 +20,12 @@ from litellm import completion
 
 console = Console()
 
-NVIDIA_KEY = os.getenv("NVDAI_API_KEY")
-if not NVIDIA_KEY:
-    console.print("[red]NVDAI_API_KEY not found in .env![/red]")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_KEY:
+    console.print("[red]GEMINI_API_KEY not found in .env![/red]")
     sys.exit(1)
 
-os.environ["NVIDIA_NIM_API_KEY"] = NVIDIA_KEY
+os.environ["GEMINI_API_KEY"] = GEMINI_KEY
 
 
 def get_site_ids_from_json(filepath: Path) -> list:
@@ -54,20 +54,27 @@ def build_markdown_table(site_ids, data_dir: Path) -> str:
     """Builds a dense Markdown table of statistical metrics."""
     headers = [
         "Site ID", "Nodes", "WS Ratio", "Asymmetry",
-        "Color Var", "Dom Brightness", "Pal Mood", "Scroll Depth"
+        "Color Var", "Dom Brightness", "Pal Mood", "Scroll Depth", "Style Tags"
     ]
 
     rows = []
     for site_id in site_ids:
         meta_path = data_dir / site_id / "metadata.json"
         visual_path = data_dir / site_id / "visual_analysis.json"
+        rationale_path = data_dir / site_id / "taste_rationale.json"
 
-        if not meta_path.exists() or not visual_path.exists():
+        if not meta_path.exists() or not visual_path.exists() or not rationale_path.exists():
             continue
 
         try:
             meta = json.loads(meta_path.read_text())
             visual = json.loads(visual_path.read_text())
+            try:
+                rationale = json.loads(rationale_path.read_text())
+                tags = rationale.get('style_tags', [])
+                style_str = ", ".join(tags) if tags else "N/A"
+            except Exception:
+                style_str = "N/A"
 
             nodes = meta.get("dom_structure", {}).get("tags", {}).get("total_nodes", "N/A")
             ws_ratio = f"{visual.get('whitespace_ratio', 0):.3f}"
@@ -77,7 +84,7 @@ def build_markdown_table(site_ids, data_dir: Path) -> str:
             mood = visual.get('palette_mood', "N/A")
             scroll = f"{visual.get('scroll_depth_multiplier', 0):.1f}"
 
-            rows.append(f"| {site_id} | {nodes} | {ws_ratio} | {asym} | {c_var} | {brightness} | {mood} | {scroll} |")
+            rows.append(f"| {site_id} | {nodes} | {ws_ratio} | {asym} | {c_var} | {brightness} | {mood} | {scroll} | {style_str} |")
         except Exception as e:
             console.print(f"[yellow]Skipping {site_id}: {e}[/yellow]")
 
@@ -90,12 +97,14 @@ def build_markdown_table(site_ids, data_dir: Path) -> str:
 
 
 def run_llm(prompt: str, label: str) -> str:
-    """Calls NVIDIA NIM Llama 3.1 Nemotron 70B via litellm."""
-    console.print(f"\n[bold cyan]Calling NVIDIA NIM for: {label}...[/bold cyan]")
+    """Calls local ollama/gemma4 via litellm."""
+    console.print(f"\n[bold cyan]Calling ollama/gemma4 (local) for: {label}...[/bold cyan]")
     try:
         response = completion(
-            model="nvidia_nim/deepseek-ai/deepseek-v4-pro-0813",
+            model="ollama/gemma4",
             messages=[{"role": "user", "content": prompt}],
+            api_base="http://localhost:11434",
+            max_tokens=4096,
             stream=True
         )
 
