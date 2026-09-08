@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from playwright.sync_api import sync_playwright
 from PIL import Image
 from rich.console import Console
-from config import DATA_DIR, VIEWPORT, SCROLL_SPEED, SCROLL_PAUSE
+from config import DATA_DIR, VIEWPORT, SCROLL_SPEED, SCROLL_PAUSE, SCROLL_DURATION
 
 console = Console()
 
@@ -235,7 +235,7 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
 
             # ── Step 4: Scroll interaction for video recording ─────────────
             # Use mouse.wheel to naturally trigger Locomotive/Lenis/GSAP ScrollTrigger.
-            console.print("[dim]  ↳ Recording interaction (max 30s)...[/dim]")
+            console.print(f"[dim]  ↳ Recording interaction (max {SCROLL_DURATION}s)...[/dim]")
             
             page.mouse.move(VIEWPORT["width"] // 2, VIEWPORT["height"] // 2)
             
@@ -243,7 +243,7 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             last_scroll_y = -1
             stall_count = 0
             
-            while time.time() - scroll_start_time < 30:
+            while time.time() - scroll_start_time < SCROLL_DURATION:
                 page.mouse.wheel(delta_x=0, delta_y=SCROLL_SPEED)
                 time.sleep(SCROLL_PAUSE)
                 

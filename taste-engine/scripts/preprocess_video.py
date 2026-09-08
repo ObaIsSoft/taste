@@ -29,8 +29,42 @@ from config import DATA_DIR
 
 console = Console()
 
-MSE_THRESHOLD = 0.05 # 5% visual structural change
-BATCH_SIZE = 32      # Process frames in batches for C++ throughput
+MSE_THRESHOLD = 0.012  # Structural layout change threshold (lowered to catch subtle scroll shifts)
+BATCH_SIZE = 32        # Process frames in batches for C++ throughput
+MAX_KEYFRAMES = 30     # Cap per site to avoid RAM overload on long videos
+SAMPLE_FPS = 1.0       # Sample at 1fps (was 2fps but with idle-time recordings, quality > quantity)
+
+
+def is_content_frame(tensor) -> bool:
+    """
+    Returns True only if the frame contains real rendered website content.
+    Filters out:
+      - Loading screens / splash screens (near-uniform colour, minimal edges)
+      - Blank white / near-white pages
+      - Frozen / idle frames (handled separately via MSE)
+
+    Three checks:
+      1. Avg brightness < 0.92  (near-white blank = loading screen)
+      2. Pixel variance > 0.002 (flat uniform colour = splash gradient)
+      3. Edge density > 0.005   (Sobel-approx: text + UI elements have edges)
+    """
+    avg_brightness = tensor.mean().item()
+    if avg_brightness > 0.92:
+        return False  # near-white blank
+
+    variance = tensor.var().item()
+    if variance < 0.002:
+        return False  # too uniform — loading screen gradient
+
+    # Approximate edge density using pixel-difference in X and Y
+    gray = tensor.mean(dim=0, keepdim=True)  # (1, H, W)
+    dx = (gray[:, :, 1:] - gray[:, :, :-1]).abs().mean().item()
+    dy = (gray[:, 1:, :] - gray[:-1, :, :]).abs().mean().item()
+    edge_density = (dx + dy) / 2
+    if edge_density < 0.005:
+        return False  # no edges = no text/UI visible
+
+    return True
 
 def process_video(site_id):
     site_dir = DATA_DIR / site_id
@@ -58,9 +92,9 @@ def process_video(site_id):
         fps = decoder.metadata.average_fps if decoder.metadata.average_fps else 30.0
         total_frames = len(decoder)
         
-        # Sample at ~2fps
-        frame_interval = max(1, int(fps / 2))
-        sample_indices = list(range(0, total_frames, frame_interval))
+    # Sample at SAMPLE_FPS
+    frame_interval = max(1, int(fps / SAMPLE_FPS))
+    sample_indices = list(range(0, total_frames, frame_interval))
         
         extracted_frames = []
         prev_downsampled = None
@@ -82,13 +116,15 @@ def process_video(site_id):
                 is_keyframe = False
                 
                 if prev_downsampled is None:
-                    is_keyframe = True
+                    # First frame — only accept if it's real content
+                    if is_content_frame(tensors[i]):
+                        is_keyframe = True
                 else:
                     mse = F.mse_loss(current_ds, prev_downsampled).item()
-                    if mse > MSE_THRESHOLD:
+                    if mse > MSE_THRESHOLD and is_content_frame(tensors[i]):
                         is_keyframe = True
                         
-                if is_keyframe:
+                if is_keyframe and len(extracted_frames) < MAX_KEYFRAMES:
                     frame_idx = batch_indices[i]
                     timestamp = frame_idx / fps
                     frame_name = f"frame_{len(extracted_frames):03d}.jpg"

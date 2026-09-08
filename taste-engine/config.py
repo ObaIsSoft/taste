@@ -25,16 +25,18 @@ LOGS_DIR.mkdir(exist_ok=True)
 # ── Unified Models (LiteLLM) ───────────────────────────────────────────────
 # The local stack
 VISION_MODEL = os.environ.get("VISION_MODEL", "ollama/minicpm-v")
-REASONING_MODEL = os.environ.get("REASONING_MODEL", "ollama/deepseek-r1:8b")
+REASONING_MODEL = os.environ.get("REASONING_MODEL", "ollama/gemma4")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "ollama/nomic-embed-text")
 
 # ── Scraper ────────────────────────────────────────────────────────────────
 VIEWPORT     = {"width": 1440, "height": 900}
-SCROLL_SPEED = 80          # px per step when recording video
-SCROLL_PAUSE = 0.04        # seconds between steps
+SCROLL_SPEED = 250         # px per step when recording video (faster = more page covered)
+SCROLL_PAUSE = 0.08        # seconds between steps (slightly slower tick = smoother recording)
+SCROLL_DURATION = 90       # seconds to scroll (was 30 — gives full coverage of tall pages)
 VIDEO_FPS    = 25
 
-# Frame extraction timestamps (seconds into the recording)
+# Frame extraction timestamps — these are now IGNORED by preprocess_video.py
+# which uses MSE-based keyframe detection instead. Kept for legacy reference only.
 FRAME_TIMESTAMPS = [0.0, 0.5, 1.0, 2.0, 4.0, 6.0]
 
 # ── Quality thresholds ─────────────────────────────────────────────────────

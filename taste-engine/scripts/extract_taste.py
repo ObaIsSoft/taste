@@ -1,191 +1,159 @@
 """
-extract_taste.py — Phase 2: The Taste Extractor
+extract_taste.py — Phase 2: The Taste Extractor (Statistical Table Reduce)
 
-Queries Supabase for the RLHF Ground Truth. 
-Extracts visual math, metadata, and motion physics for the Top 15 (Winners) and Bottom 15 (Losers).
-Uses Gemini to synthesize the underlying system differences (physics, spacing, type).
+Extracts visual and metadata metrics to a dense Markdown table, then uses the
+powerful free-claude-code proxy to synthesize the final "Rules of Taste".
 """
 import sys
 import os
 import json
-import requests
+import re
 from pathlib import Path
-from supabase import create_client, Client
-import statistics
-
-# Allow running from scripts/ or from project root
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from rich.console import Console
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from litellm import completion
-from config import DATA_DIR, REASONING_MODEL
 
 console = Console()
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+def get_site_ids_from_text(filepath: Path) -> list:
+    """Regex match --- SITE site-XXX ANALYSIS --- from text"""
+    if not filepath.exists():
+        return []
+    content = filepath.read_text()
+    # Find all site-XXX
+    sites = re.findall(r"--- SITE (site-\d{3})", content)
+    # Deduplicate and keep order
+    return list(dict.fromkeys(sites))
 
-def load_site_data(site_id):
-    site_dir = DATA_DIR / site_id
-    if not site_dir.exists():
-        return None
-        
-    data = {}
+def build_markdown_table(site_ids, data_dir: Path) -> str:
+    """Builds a dense Markdown table of statistical metrics for the given sites."""
+    headers = [
+        "Site ID", "Nodes", "WS Ratio", "Asymmetry", 
+        "Color Var", "Dom Brightness", "Pal Mood", "Scroll Depth", "Motion Shifts"
+    ]
     
-    # 1. Visual Math
-    visual_path = site_dir / "visual_analysis.json"
-    if visual_path.exists():
-        data["visual"] = json.loads(visual_path.read_text())
-        
-    # 2. Metadata (DOM, Typo)
-    meta_path = site_dir / "metadata.json"
-    if meta_path.exists():
-        data["meta"] = json.loads(meta_path.read_text())
-        
-    # 3. Motion Physics
-    motion_path = site_dir / "motion_code.json"
-    if motion_path.exists():
-        motion = json.loads(motion_path.read_text())
-        data["motion"] = {
-            "gsap_detected": motion.get("gsap_detected", False),
-            "gsap_calls": len(motion.get("gsap_calls", [])),
-            "css_transitions": len(motion.get("css_transitions", [])),
-            "scroll_driven": motion.get("scroll_patterns", {}).get("scroll_driven_count", 0)
-        }
-        
-    # 4. Rationale
-    rationale_path = site_dir / "taste_rationale.md"
-    if rationale_path.exists():
-        data["rationale"] = rationale_path.read_text()
-        
-    return data
-
-def aggregate_cohort(sites):
-    aggregated = {
-        "avg_whitespace": [],
-        "avg_asymmetry": [],
-        "avg_brightness": [],
-        "avg_max_font_size": [],
-        "avg_dom_nodes": [],
-        "motion_profiles": [],
-        "rationales": []
-    }
+    rows = []
     
-    for site in sites:
-        site_id = site["site_id"]
-        data = load_site_data(site_id)
-        if not data:
+    for site_id in site_ids:
+        meta_path = data_dir / site_id / "metadata.json"
+        visual_path = data_dir / site_id / "visual_analysis.json"
+        motion_path = data_dir / site_id / "motion_storyboard.json"
+        
+        if not meta_path.exists() or not visual_path.exists():
             continue
             
-        if "visual" in data:
-            aggregated["avg_whitespace"].append(data["visual"].get("whitespace_ratio", 0))
-            aggregated["avg_asymmetry"].append(data["visual"].get("asymmetry_score", 0))
-            aggregated["avg_brightness"].append(data["visual"].get("avg_brightness", 0))
+        try:
+            meta = json.loads(meta_path.read_text())
+            visual = json.loads(visual_path.read_text())
             
-        if "meta" in data:
-            dom = data["meta"].get("dom_structure", {})
-            aggregated["avg_dom_nodes"].append(dom.get("tags", {}).get("total_nodes", 0))
-            aggregated["avg_max_font_size"].append(dom.get("typography", {}).get("max_font_size_px", 0))
+            motion_shifts = "0"
+            if motion_path.exists():
+                try:
+                    motion = json.loads(motion_path.read_text())
+                    motion_shifts = str(motion.get("total_extracted", 0))
+                except Exception:
+                    pass
             
-        if "motion" in data:
-            aggregated["motion_profiles"].append(data["motion"])
+            nodes = meta.get("dom_structure", {}).get("tags", {}).get("total_nodes", "N/A")
+            ws_ratio = f"{visual.get('whitespace_ratio', 0):.3f}"
+            asym = f"{visual.get('asymmetry_score', 0):.3f}"
+            c_var = f"{visual.get('color_variance', 0):.3f}"
+            brightness = f"{visual.get('dominant_color', {}).get('brightness', 0):.3f}"
+            mood = visual.get('palette_mood', "N/A")
+            scroll = f"{visual.get('scroll_depth_multiplier', 0):.1f}"
             
-        if "rationale" in data:
-            # We include the full qualitative rationale since local models (Llama 3/Qwen) have large context windows
-            # This ensures we don't lose data on texture, mood, image quality, glassmorphism, etc.
-            aggregated["rationales"].append(f"--- SITE {site_id} RATIONALE ---\n{data['rationale']}")
+            rows.append(f"| {site_id} | {nodes} | {ws_ratio} | {asym} | {c_var} | {brightness} | {mood} | {scroll} | {motion_shifts} |")
+        except Exception as e:
+            console.print(f"[yellow]Skipping {site_id} due to parse error: {e}[/yellow]")
             
-    # Calculate means
-    def mean(lst):
-        return sum(lst) / len(lst) if lst else 0
+    header_str = "| " + " | ".join(headers) + " |\n"
+    header_str += "|" + "|".join(["---" for _ in headers]) + "|\n"
+    
+    return header_str + "\n".join(rows)
+
+def stream_completion(prompt, label):
+    """Runs a completion via the free-claude-code proxy."""
+    console.print(f"\n[bold yellow]Generating {label} via FCC Proxy...[/bold yellow]")
+    try:
+        # litellm will use the OpenAI API interface when model starts with openai/
+        # the model name will be intercepted by the FCC proxy.
+        response = completion(
+            model="llama-3.1-nemotron-70b-instruct",
+            messages=[{"role": "user", "content": prompt}],
+            api_base="http://127.0.0.1:8082/v1",
+            api_key="freecc",
+            stream=True
+        )
         
-    return {
-        "whitespace_ratio": mean(aggregated["avg_whitespace"]),
-        "asymmetry_score": mean(aggregated["avg_asymmetry"]),
-        "brightness": mean(aggregated["avg_brightness"]),
-        "max_font_size_px": mean(aggregated["avg_max_font_size"]),
-        "dom_nodes": mean(aggregated["avg_dom_nodes"]),
-        "motion_summary": f"{sum(1 for m in aggregated['motion_profiles'] if m.get('gsap_detected'))} sites used GSAP. Avg scroll triggers: {mean([m.get('scroll_driven', 0) for m in aggregated['motion_profiles']])}",
-        "design_principles_extracted": "\n".join(aggregated["rationales"])
-    }
+        full_text = ""
+        for chunk in response:
+            delta = chunk.choices[0].delta.content or ""
+            sys.stdout.write(delta)
+            sys.stdout.flush()
+            full_text += delta
+            
+        print("\n")
+        return full_text
+    except Exception as e:
+        console.print(f"\n[red]Error connecting to Proxy: {e}[/red]")
+        console.print("[yellow]Hint: Ensure `fcc-server` is running on port 8082![/yellow]")
+        return ""
 
 def main():
-    console.print("[cyan]Fetching RLHF Ground Truth from Supabase...[/cyan]")
-    res = supabase.table("ratings").select("site_id, mu, sigma").execute()
-    data = res.data
+    base_dir = Path(__file__).parent.parent
+    results_dir = base_dir / "results"
+    data_dir = base_dir / "data"
     
-    if len(data) < 30:
-        console.print("[red]Not enough data to extract top/bottom 15.[/red]")
+    winners_path = results_dir / "winners_summaries.json"
+    losers_path = results_dir / "losers_summaries.json"
+    
+    if not winners_path.exists() or not losers_path.exists():
+        console.print("[red]Could not find summaries![/red]")
         sys.exit(1)
         
-    for d in data:
-        d["score"] = d["mu"] - 3 * d["sigma"]
-        
-    data.sort(key=lambda x: x["score"], reverse=True)
+    winner_ids = get_site_ids_from_text(winners_path)
+    loser_ids = get_site_ids_from_text(losers_path)
     
-    top_15 = data[:15]
-    bottom_15 = data[-15:]
+    console.print(f"[cyan]Found {len(winner_ids)} Winners and {len(loser_ids)} Losers.[/cyan]")
     
-    console.print("[cyan]Aggregating Math & Physics for Top 15 (Winners)...[/cyan]")
-    top_15_agg = aggregate_cohort(top_15)
+    # ── MAP PHASE: Build Statistical Tables ───────────────────────────────────
+    console.print("\n[cyan]=== MAP: Generating Deterministic Tables ===[/cyan]")
+    winner_table = build_markdown_table(winner_ids, data_dir)
+    loser_table = build_markdown_table(loser_ids, data_dir)
     
-    console.print("[cyan]Aggregating Math & Physics for Bottom 15 (Losers)...[/cyan]")
-    bottom_15_agg = aggregate_cohort(bottom_15)
+    # ── REDUCE PHASE: Final Synthesis via Proxy ──────────────────────────────
+    console.print("\n[cyan]=== REDUCE: Final Synthesis ===[/cyan]")
     
-    prompt = f"""
-You are the world's leading expert in digital design, motion physics, and aesthetic mathematics.
-I am providing you with the aggregated structural data, mathematical layouts, and qualitative design rationales for the Top 15 Highest Rated websites (The Winners) and the Bottom 15 Lowest Rated websites (The Losers). 
+    reduce_prompt = f"""
+You are the world's leading expert in digital design and structural aesthetics.
+I am providing you with two highly detailed statistical tables containing visual mechanics data for the Highest Rated websites (The Winners) and the Lowest Rated websites (The Losers).
 
-IMPORTANT CONTEXT: All 30 of these websites are premium Awwwards/Landbook winners. The "Losers" are not bad 1990s websites; they are simply the *least preferred* among an elite group based on 700+ human RLHF votes.
+Your task is to synthesize these metrics into the definitive "Rules of Taste". Look at the data differences between Winners and Losers to inform your conclusions.
 
-Your task is to analyze the subtle differences in the underlying system and extract the definitive "Rules of Taste". 
+TOP TIER (THE WINNERS) STATS:
+{winner_table}
 
-You MUST analyze and contrast the Winners vs Losers across ALL of the following dimensions:
-- Typography & Font (Scaling, pairing, weight)
-- Whitespace & Layout Density
-- Hero Sections (Structure, impact)
-- Logo Usage & Type
-- Color Systems (Palettes, complementary structures, proper vs improper use of Glassmorphism)
-- Texture & Feel
-- Imagery (Style, content, 3D placement, video quality)
-- Mood & Pace (Relation of the visual message to the emotional mood)
-- UI Elements (Use of SVG, iconography)
-- Symmetry vs Asymmetry (Identify when asymmetry is good vs when it is bad)
-- Motion Choreography & Physics (GSAP vs CSS, easing, interaction feel)
+BOTTOM TIER (THE LOSERS) STATS:
+{loser_table}
 
-TOP 15 (THE WINNERS) DATA:
-{json.dumps(top_15_agg, indent=2)}
+Output a comprehensive Markdown report that covers:
+1. The Core Differences (Visual, Mathematical, and Structural differences observed in the data)
+2. Structural Systems (Typography, Whitespace, Asymmetry, DOM Density)
+3. Aesthetic Elements (Color Variance, Palette Moods, Brightness)
+4. The Definitive "Taste Tokens" (Highly specific, actionable rules to achieve a top-tier aesthetic based on the statistical indicators of the Winners)
 
-BOTTOM 15 (THE LOSERS) DATA:
-{json.dumps(bottom_15_agg, indent=2)}
-
-Output a comprehensive, highly-detailed Markdown report that covers:
-1. The Core Differences (Visual, Mathematical, and Emotional)
-2. Structural Systems (Typography, Grids, Asymmetry, Hero Sections)
-3. Aesthetic Elements (Color, Glassmorphism, Texture, Imagery, SVGs/Icons)
-4. Motion, Pace & Physics (GSAP, interaction feel, message-to-mood relation)
-5. The Definitive "Taste Tokens" (Highly specific, actionable rules to achieve a top-tier aesthetic based on the Winners)
+Just output the final Markdown report directly. Do not output conversational filler.
 """
-
-    console.print(f"[cyan]Synthesizing structural differences with {REASONING_MODEL}...[/cyan]")
     
-    try:
-        response = completion(
-            model=REASONING_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        response_text = response.choices[0].message.content
-    except Exception as e:
-        console.print(f"[red]Error connecting to {REASONING_MODEL}: {e}[/red]")
-        sys.exit(1)
+    final_report = stream_completion(reduce_prompt, "Final Rules of Taste Synthesis")
     
-    out_dir = Path(__file__).parent.parent / "results"
-    out_dir.mkdir(exist_ok=True)
-    out_file = out_dir / "taste_extraction_report.md"
-    
-    out_file.write_text(response_text)
-    console.print(f"[green]✓ Analysis complete! Saved to {out_file}[/green]")
+    if final_report:
+        out_file = results_dir / "taste_extraction_report.md"
+        out_file.write_text(final_report)
+        console.print(f"\n[green]✓ Analysis complete! Saved to {out_file}[/green]")
+    else:
+        console.print("[red]Failed to generate report.[/red]")
 
 if __name__ == "__main__":
     main()

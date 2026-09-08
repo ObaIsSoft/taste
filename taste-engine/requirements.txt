@@ -10,3 +10,4 @@ python-dotenv==1.0.1
 torch>=2.3.0
 torchcodec>=0.1.0
 litellm>=1.40.0
+supabase>=2.3.0

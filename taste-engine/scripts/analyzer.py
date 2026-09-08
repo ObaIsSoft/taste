@@ -201,7 +201,5 @@ if __name__ == "__main__":
         for site_dir in sorted(DATA_DIR.iterdir()):
             if not site_dir.is_dir() or not (site_dir / "screenshot_hero.png").exists():
                 continue
-            if (site_dir / "visual_analysis.json").exists():
-                console.print(f"[yellow]⏭ Skip[/yellow] {site_dir.name}")
-                continue
+            # Force re-analysis to capture new metrics (removed the skip check)
             analyze_image(site_dir.name)
