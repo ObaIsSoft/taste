@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from rich.console import Console
 from litellm import completion
-from config import DATA_DIR, VISION_MODEL, LOGS_DIR
+from config import DATA_DIR, VISION_MODEL, REASONING_MODEL, LOGS_DIR
 
 console = Console()
 
@@ -112,132 +112,120 @@ def enrich_with_claude(site_id: str, entry: dict) -> dict | None:
         "text": "↑ Above: Above-the-fold hero screenshot (static state)\n",
     })
 
-    # 2. Sequential motion frames (if available)
-    manifest_path = site_dir / "motion_storyboard.json"
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text())
-        frames_list = manifest.get("frames", [])[:4]  # max 4 frames (API limit)
-        
-        frames = [f["filename"] for f in frames_list]
-        timestamps = [f["timestamp_sec"] for f in frames_list]
-
-        if frames:
-            content_blocks.append({
-                "type": "text",
-                "text": (
-                    f"\n↓ Below: {len(frames)} sequential frames from the site's "
-                    "interaction recording (scroll + hover journey).\n"
-                    "These show how the site MOVES over time, not just its static state.\n"
-                ),
-            })
-            for i, (frame_name, ts) in enumerate(zip(frames, timestamps)):
-                try:
-                    frame_path = site_dir / "frames" / frame_name
-                    frame_b64, frame_type = load_image_b64(frame_path, max_kb=800)
-                    content_blocks.append({
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{frame_type};base64,{frame_b64}"},
-                    })
-                    content_blocks.append({
-                        "type": "text",
-                        "text": f"↑ Frame {i+1} at t={ts}s into the interaction\n",
-                    })
-                except Exception:
-                    pass
-
-    # ── Context from previous analysis steps ──────────────────────────────
-    llava_context   = json.dumps(entry.get("llava", {}), indent=2)
+    # ── Context from previous analysis steps (Stage 1) ───────────────
+    metadata        = entry.get("metadata") or {}
     visual_context  = json.dumps(entry.get("visual", {}), indent=2)
     motion_context  = build_motion_context(site_id)
-    metadata        = entry.get("metadata", {})
+    dom_computed    = json.dumps(metadata.get("dom_structure", {}).get("computed_styles", []), indent=2)
 
-    # ── Prompt ────────────────────────────────────────────────────────────
-    prompt = f"""You are the creative director at a tier-1 digital agency. You are building a design taste database.
+    # ── Stage 2: Forensic VLM Prompt ──────────────────────────────────
+    vlm_prompt = """Analyze the image. Output a factual JSON object describing the physical elements present.
+DO NOT use subjective words like 'clean', 'modern', 'premium', or 'engaging'. State ONLY observable facts.
 
-SITE: {metadata.get('title', 'Unknown')} ({metadata.get('url', '')})
-
-PREVIOUS ANALYSIS (from local AI model):
-{llava_context}
-
-VISUAL DNA (extracted programmatically):
-{visual_context}
-
-MOTION CODE (extracted from live JavaScript/CSS):
-{motion_context}
-
-You have been given the hero screenshot AND a sequence of frames from a recorded scroll interaction.
-Use ALL of this data together to write a complete taste profile.
-
-Respond ONLY with a valid JSON object:
-{{
-  "design_rationale": "3-4 paragraphs. Explain WHY this design works: grid logic, visual hierarchy, whitespace intention, typographic system, brand positioning. Be specific. Reference what you actually see.",
-  
-  "motion_language": {{
-    "personality": ["3 words, e.g. 'cinematic', 'breathing', 'precise'"],
-    "easing_type": "Describe the physical easing curve (e.g., 'spring-physics', 'heavy-friction-stop', 'custom-bezier', or novel physics observed)",
-    "pacing": "Describe the pacing of the motion (e.g., 'fast-snappy', 'slow-cinematic', 'varied-editorial', etc.)",
-    "entrance_pattern": "Describe what enters first vs last (e.g., 'background-first, then headline-stagger, then CTA-fade')",
-    "scroll_behavior": "Describe how scrolling affects the page (e.g., 'subtle-parallax', 'section-reveals', 'full-scroll-narrative', etc.)",
-    "hover_quality": "Describe hover micro-interactions (e.g., 'color-shift', 'cursor-morph', 'complex-magnetic-pull', etc.)",
-    "techniques_identified": ["list of specific techniques you can infer from the frames + code"]
-  }},
-  
-  "gsap_spec": {{
-    "description": "If GSAP is present, describe the timeline logic you'd write to recreate this",
-    "example_timeline": "gsap.timeline code snippet that approximates what you see, or null if not applicable"
-  }},
-  
-  "design_tokens": {{
-    "primary_color":    "#hex",
-    "secondary_color":  "#hex",
-    "background_color": "#hex",
-    "text_color":       "#hex",
-    "font_heading":     "Font name or 'Unknown'",
-    "font_body":        "Font name or 'Unknown'",
-    "spacing_unit":     "Describe the primary spatial increment (e.g., 'tight 4px system', 'airy 16px blocks', etc.)",
-    "border_radius":    "Describe the border-radius philosophy (e.g., 'sharp 0px brutalist', 'pill-shaped buttons', 'subtle 4px', etc.)",
-    "shadow_style":     "Describe the use of shadows/elevation (e.g., 'flat/none', 'colored-glow', 'harsh-brutalist-offset', etc.)"
-  }},
-  
-  "premium_signals": ["specific observable details that elevate this above generic, e.g. 'custom variable font with weight animation', 'grain texture overlay at 0.04 opacity'"],
-  
-  "what_makes_it_fail": "Honest critique — what would make this design feel generic or fail? Be specific.",
-  
-  "style_tags": ["5-10 short searchable tags, e.g. 'editorial', 'dark', 'motion-heavy', 'luxury', 'webgl'"]
-}}"""
-
-    content_blocks.append({"type": "text", "text": prompt})
+Use this exact JSON schema:
+{
+  "focal_subject": {
+    "type": "human_face | 3d_render | product_mockup | pure_typography | abstract_graphic | none",
+    "description": "Short factual description of the main focal element"
+  },
+  "background_style": {
+    "type": "flat_color | gradient | textured | video_still | photographic",
+    "dominant_hue": "descriptive name",
+    "has_grain_or_noise": false
+  },
+  "badges_and_overlays": [
+    "List any award ribbons, floating badges, floating tags, or sticky navbars visible"
+  ],
+  "whitespace_distribution": "dense | balanced | extreme_empty_space"
+}
+"""
+    content_blocks = [
+        {"type": "image_url", "image_url": {"url": f"data:{hero_type};base64,{hero_b64}"}},
+        {"type": "text", "text": vlm_prompt}
+    ]
 
     try:
-        response = completion(
+        console.print(f"  [dim]↳ Running Stage 2: {VISION_MODEL} (Forensic VLM)...[/dim]")
+        vision_response = completion(
             model=VISION_MODEL,
             messages=[{"role": "user", "content": content_blocks}],
+            max_tokens=1000,
+            num_ctx=4096
+        )
+        
+        vlm_json_str = vision_response.choices[0].message.content.strip()
+        
+        # Clean markdown fences from VLM output just in case
+        if "```json" in vlm_json_str:
+            vlm_json_str = vlm_json_str.split("```json")[1].split("```")[0]
+        elif vlm_json_str.startswith("```"):
+            vlm_json_str = vlm_json_str.split("```")[1]
+            
+        (site_dir / "stage2_vlm_raw.json").write_text(vlm_json_str)
+
+        # ── Stage 3: Taste Synthesizer (Gemma) ─────────────────────────
+        synthesizer_prompt = f"""You are analyzing verified structural data from a top-tier Awwwards website.
+
+METRIC SHEET (Stage 1 Deterministic Math):
+DOM Computed Styles: {dom_computed[:3000]}
+Motion Context: {motion_context}
+Visual Context (K-Means): {visual_context}
+
+VISUAL SCHEMA (Stage 2 Forensic VLM):
+{vlm_json_str}
+
+TASK:
+Analyze the structural tension between the typographic grid (from the DOM styles) and the organic elements (from the Visual Schema).
+Derive the exact design rule this site uses to achieve visual prestige without using filler adjectives.
+Contrast the observed styles against a standard Bootstrap 5 default implementation to provide a negative baseline.
+
+Respond ONLY with a valid JSON object matching this exact schema:
+{{
+  "design_rationale": ["paragraph 1", "paragraph 2"],
+  "taste_rule": "The core design law this site exploits",
+  "negative_baseline_contrast": "How this differs from generic Bootstrap 5 defaults",
+  "motion_language": "Physical description of the GSAP / Scroll logic",
+  "premium_signals": ["signal 1", "signal 2"],
+  "style_tags": ["tag1", "tag2"]
+}}"""
+
+        console.print(f"  [dim]↳ Running Stage 3: {REASONING_MODEL} (Taste Synthesizer)...[/dim]")
+        extraction_response = completion(
+            model=REASONING_MODEL,
+            messages=[{"role": "user", "content": synthesizer_prompt}],
             max_tokens=2500
         )
+        
+        json_raw = extraction_response.choices[0].message.content.strip()
+        
+        # Clean markdown fences from gemma output just in case
+        if "```json" in json_raw:
+            json_raw = json_raw.split("```json")[1].split("```")[0]
+        elif json_raw.startswith("```"):
+            json_raw = json_raw[3:].split("```")[0]
 
-        raw = response.choices[0].message.content.strip()
-
-        # Strip markdown fences
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif raw.startswith("```"):
-            raw = raw[3:].split("```")[0]
-
-        result = json.loads(raw.strip())
+        result = json.loads(json_raw.strip())
         result["enriched_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        result["model"]       = VISION_MODEL
+        result["model"]       = f"{VISION_MODEL} (Vision) -> {REASONING_MODEL} (Struct)"
 
         (site_dir / "taste_rationale.json").write_text(json.dumps(result, indent=2))
-        console.print(f"[green]✓[/green] {site_id}: enriched with motion + taste analysis")
+        
+        # Cleanup the raw md file on success
+        # try:
+        #     (site_dir / "claude_rationale_raw.md").unlink()
+        # except FileNotFoundError:
+        #     pass
+            
+        console.print(f"[green]✓[/green] {site_id}: enriched perfectly with Two-Step Pipeline")
         return result
 
     except json.JSONDecodeError as e:
-        console.print(f"[red]✗ JSON parse error for {site_id}: {e}[/red]")
-        raw_save = {"raw_response": raw, "parse_error": True}
+        console.print(f"[red]✗ JSON parse error for {site_id} from {REASONING_MODEL}: {e}[/red]")
+        raw_save = {"raw_response": json_raw, "parse_error": True}
         (site_dir / "claude_rationale_raw.json").write_text(json.dumps(raw_save, indent=2))
         return None
     except Exception as e:
-        console.print(f"[red]✗ Claude failed for {site_id}: {e}[/red]")
+        console.print(f"[red]✗ Enrichment failed for {site_id}: {e}[/red]")
         return None
 
 

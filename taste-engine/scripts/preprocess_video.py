@@ -45,9 +45,9 @@ def is_content_frame(tensor) -> bool:
     variance = tensor.var().item()
 
     gray = tensor.mean(dim=0)  # (H, W)
-    dx = (gray[:, 1:] - gray[:, :-1]).abs().mean().item()
-    dy = (gray[1:, :] - gray[:-1, :]).abs().mean().item()
-    edge_density = (dx + dy) / 2
+    dx = (gray[:, 1:] - gray[:, :-1]).abs().max().item()
+    dy = (gray[1:, :] - gray[:-1, :]).abs().max().item()
+    edge_density = max(dx, dy)
     
     if avg_brightness > 0.96:
         return False  # near-white blank

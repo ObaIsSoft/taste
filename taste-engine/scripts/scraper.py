@@ -68,6 +68,34 @@ GSAP_INTERCEPTOR = """() => {
     };
 }"""
 
+# ── Virtual Scroll Telemetry ───────────────────────────────────────────────
+
+VIRTUAL_SCROLL_OBSERVER = """() => {
+    window.__taste_virtual_scroll = [];
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'style') {
+                const transform = mutation.target.style.transform;
+                if (transform && (transform.includes('translate3d') || transform.includes('translateY') || transform.includes('translate(') || transform.includes('matrix'))) {
+                    // Only log 1 in every 15 mutations to avoid massive arrays on 60fps scroll
+                    if (Math.random() < 0.06) {
+                        window.__taste_virtual_scroll.push({
+                            type: "virtual_scroll_tick",
+                            target: mutation.target.tagName,
+                            className: mutation.target.className,
+                            transform: transform
+                        });
+                    }
+                }
+            }
+        });
+    });
+    // Start observer immediately on body
+    if (document.body) {
+        observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style'] });
+    }
+}"""
+
 # ── CSS animation extractor ────────────────────────────────────────────────
 
 CSS_ANIMATION_EXTRACTOR = """() => {
@@ -115,7 +143,7 @@ SCROLL_PROFILER = """() => {
 
 # ── DOM structural & typography extractor ─────────────────────────────────
 
-DOM_STRUCTURAL_EXTRACTOR = """() => {
+COMPUTED_STYLE_EXTRACTOR = """() => {
     const tags = {
         canvas: document.querySelectorAll('canvas').length,
         svg: document.querySelectorAll('svg').length,
@@ -124,41 +152,36 @@ DOM_STRUCTURAL_EXTRACTOR = """() => {
         total_nodes: document.querySelectorAll('*').length
     };
 
-    const fontMap = {};
-    let maxFontSize = 0;
-    
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    while ((node = walker.nextNode())) {
-        if (!node.nodeValue.trim()) continue;
-        const parent = node.parentElement;
-        if (!parent) continue;
-        const style = window.getComputedStyle(parent);
-        
+    const elements = Array.from(document.querySelectorAll("h1, h2, h3, p, button, section, header, footer, nav"));
+    const styles = [];
+    for (const el of elements) {
+        const style = window.getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-
-        const fontFamily = style.fontFamily;
-        const fontSize = parseFloat(style.fontSize);
-
-        if (fontSize > maxFontSize) maxFontSize = fontSize;
-        fontMap[fontFamily] = (fontMap[fontFamily] || 0) + 1;
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        
+        styles.push({
+            tag: el.tagName,
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            letterSpacing: style.letterSpacing,
+            lineHeight: style.lineHeight,
+            color: style.color,
+            backdropFilter: style.backdropFilter,
+            transform: style.transform,
+            zIndex: style.zIndex,
+            bbox: {
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                w: Math.round(rect.width),
+                h: Math.round(rect.height)
+            }
+        });
     }
-
-    let primaryFont = "unknown";
-    let maxCount = 0;
-    for (const [font, count] of Object.entries(fontMap)) {
-        if (count > maxCount) {
-            maxCount = count;
-            primaryFont = font;
-        }
-    }
-
+    
     return {
         tags: tags,
-        typography: {
-            primary_font: primaryFont,
-            max_font_size_px: maxFontSize
-        }
+        computed_styles: styles
     };
 }"""
 
@@ -173,6 +196,8 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
 
     result = {"id": site_id, "url": url, "status": "failed"}
 
+    has_media = (site_dir / "screenshot_hero.png").exists() and (site_dir / "screenshot_full.png").exists()
+
     context_options = {
         "viewport": VIEWPORT,
         "user_agent": (
@@ -181,7 +206,7 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             "Chrome/127.0.0.0 Safari/537.36"
         ),
     }
-    if record_video:
+    if record_video and not has_media:
         context_options["record_video_dir"] = str(site_dir)
         context_options["record_video_size"] = VIEWPORT
 
@@ -196,6 +221,9 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
 
             console.print(f"[cyan]→ Loading[/cyan] {url}")
             page.goto(url, wait_until="domcontentloaded", timeout=45000)
+
+            # Start Virtual Scroll Observer
+            page.evaluate(VIRTUAL_SCROLL_OBSERVER)
 
             # Wait for fonts + heavy assets
             try:
@@ -222,10 +250,11 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             # ── Step 2: Hero screenshot (clean, no overlays) ───────────────
             # We take this BEFORE any scrolling because Awwwards sites heavily
             # use Locomotive/Lenis scroll hijacking which breaks scrollTo(0,0).
-            page.screenshot(
-                path=str(site_dir / "screenshot_hero.png"),
-                clip={"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]},
-            )
+            if not has_media:
+                page.screenshot(
+                    path=str(site_dir / "screenshot_hero.png"),
+                    clip={"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]},
+                )
 
             # ── Step 3: Pre-scroll pass (triggers lazy loading) ───────────
             # Scroll through the whole page quickly to trigger lazy-loaded
@@ -243,33 +272,37 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
 
             # ── Step 4: Scroll interaction for video recording ─────────────
             # Use mouse.wheel to naturally trigger Locomotive/Lenis/GSAP ScrollTrigger.
-            console.print(f"[dim]  ↳ Recording interaction (max {SCROLL_DURATION}s)...[/dim]")
-            
-            page.mouse.move(VIEWPORT["width"] // 2, VIEWPORT["height"] // 2)
-            
-            scroll_start_time = time.time()
-            last_scroll_y = -1
-            stall_count = 0
-            
-            while time.time() - scroll_start_time < SCROLL_DURATION:
-                page.mouse.wheel(delta_x=0, delta_y=SCROLL_SPEED)
-                time.sleep(SCROLL_PAUSE)
+            if not has_media:
+                console.print(f"[dim]  ↳ Recording interaction (max {SCROLL_DURATION}s)...[/dim]")
                 
-                # Check native scroll position to break early if we hit the bottom of a normal page
-                current_y = page.evaluate("window.scrollY")
-                if current_y == last_scroll_y and current_y > 0:
-                    stall_count += 1
-                else:
-                    stall_count = 0
+                page.mouse.move(VIEWPORT["width"] // 2, VIEWPORT["height"] // 2)
+                
+                scroll_start_time = time.time()
+                last_scroll_y = -1
+                stall_count = 0
+                
+                while time.time() - scroll_start_time < SCROLL_DURATION:
+                    page.mouse.wheel(delta_x=0, delta_y=SCROLL_SPEED)
+                    time.sleep(SCROLL_PAUSE)
                     
-                last_scroll_y = current_y
-                
-                # If native scroll hasn't moved for 10 ticks (and we aren't at the top), we might be at the bottom.
-                # However, custom scroll containers keep window.scrollY at 0, so stall_count will stay 0.
-                if stall_count > 10:
-                    break
+                    # Check native scroll position to break early if we hit the bottom of a normal page
+                    current_y = page.evaluate("window.scrollY")
+                    if current_y == last_scroll_y and current_y > 0:
+                        stall_count += 1
+                    else:
+                        stall_count = 0
+                        
+                    last_scroll_y = current_y
+                    
+                    # If native scroll hasn't moved for 10 ticks (and we aren't at the top), we might be at the bottom.
+                    # However, custom scroll containers keep window.scrollY at 0, so stall_count will stay 0.
+                    if stall_count > 10:
+                        break
 
-            time.sleep(1)
+                time.sleep(1)
+            else:
+                console.print(f"[dim]  ↳ Skipping slow scroll (media exists), doing fast pass...[/dim]")
+                _lazy_load_pass(page, page_height)
 
             # ── Step 5: Hover over nav links (triggers hover states) ───────
             nav_links = page.query_selector_all("nav a, header a, [role='navigation'] a")
@@ -285,10 +318,11 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             time.sleep(1)
 
             # ── Step 6: Full page screenshot ───────────────────────────────
-            page.screenshot(
-                path=str(site_dir / "screenshot_full.png"),
-                full_page=True,
-            )
+            if not has_media:
+                page.screenshot(
+                    path=str(site_dir / "screenshot_full.png"),
+                    full_page=True,
+                )
 
             # ── Extract metadata ───────────────────────────────────────────
             title = page.title()
@@ -308,16 +342,18 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             motion_libs = page.evaluate(MOTION_FINGERPRINTS)
             css_motion  = page.evaluate(CSS_ANIMATION_EXTRACTOR)
             scroll_data = page.evaluate(SCROLL_PROFILER)
-            dom_structure = page.evaluate(DOM_STRUCTURAL_EXTRACTOR)
+            dom_structure = page.evaluate(COMPUTED_STYLE_EXTRACTOR)
 
-            # ── Collect intercepted GSAP calls ─────────────────────────────
+            # ── Collect intercepted GSAP calls & Virtual Scroll ─────────────
             gsap_calls     = page.evaluate("() => window.__taste_gsap_calls || []")
             gsap_timelines = page.evaluate("() => window.__taste_gsap_timelines || []")
+            virtual_scroll = page.evaluate("() => window.__taste_virtual_scroll || []")
 
             # ── Bundle motion data ─────────────────────────────────────────
             motion_code = {
                 "libraries_detected": motion_libs,
                 "scroll_patterns":    scroll_data,
+                "virtual_scroll":     virtual_scroll[:30], # cap to avoid huge files
                 "gsap_calls":         gsap_calls[:30],   # cap at 30
                 "gsap_timelines":     gsap_timelines[:10],
                 "css_keyframes":      css_motion["keyframes"][:15],
@@ -644,9 +680,7 @@ if __name__ == "__main__":
         scrape_site(args.site, args.id, record_video=not args.no_video)
     else:
         for site in SITES:
-            already_done = (DATA_DIR / site["id"] / "metadata.json").exists()
-            if already_done:
-                console.print(f"[yellow]⏭ Skip[/yellow] {site['id']} (already scraped)")
-                continue
+            # We re-run scrape_site for all sites to inject the DOM extractor.
+            # has_media check inside scrape_site will ensure we don't redownload massive images/videos.
             scrape_site(site["url"], site["id"], record_video=not args.no_video)
-            time.sleep(3)  # be polite to servers
+            time.sleep(1)  # be polite to servers
