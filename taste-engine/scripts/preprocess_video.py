@@ -31,7 +31,7 @@ console = Console()
 
 MSE_THRESHOLD = 0.012  # Structural layout change threshold (lowered to catch subtle scroll shifts)
 BATCH_SIZE = 32        # Process frames in batches for C++ throughput
-MAX_KEYFRAMES = 30     # Cap per site to avoid RAM overload on long videos
+MAX_KEYFRAMES = 37     # Cap per site to avoid RAM overload on long videos
 SAMPLE_FPS = 1.0       # Sample at 1fps (was 2fps but with idle-time recordings, quality > quantity)
 
 
