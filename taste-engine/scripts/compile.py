@@ -8,7 +8,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from config import DATA_DIR, MASTER_FILE, ELO_FILE
+from config import (
+    DATA_DIR, MASTER_FILE, ELO_FILE,
+    METADATA_FILE, VISUAL_FILE, MOTION_CODE_FILE, STORYBOARD_FILE,
+    RATIONALE_FILE, VLM_RAW_FILE, EMBED_FILE,
+    LEGACY_LLAVA, LEGACY_FRAMES, LEGACY_CLAUDE,
+)
 
 console = Console()
 
@@ -44,14 +49,17 @@ def compile_entry(site_id: str, elo_data: dict) -> dict | None:
 
     entry = {"id": site_id}
 
-    # ── Core data files ────────────────────────────────────────────────────
+    # ── Core data files (canonical names, Plan A freeze) ───────────────────
     for key, filename in [
-        ("metadata",         "metadata.json"),
-        ("visual",           "visual_analysis.json"),
-        ("llava",            "llava_analysis.json"),
-        ("motion_code",      "motion_code.json"),
-        ("frames_manifest",  "frames_manifest.json"),
-        ("design_rationale", "claude_rationale.json"),
+        ("metadata",         METADATA_FILE),
+        ("visual",           VISUAL_FILE),
+        ("motion_code",      MOTION_CODE_FILE),
+        ("storyboard",       STORYBOARD_FILE),
+        ("design_rationale", RATIONALE_FILE),
+        ("vlm_raw",          VLM_RAW_FILE),
+        ("embedding",        EMBED_FILE),
+        # Legacy fallback (read-only, deprecated):
+        ("llava",            LEGACY_LLAVA),
     ]:
         path = site_dir / filename
         if path.exists():
@@ -107,7 +115,8 @@ if __name__ == "__main__":
     entries = load_master()
     with_rationale  = sum(1 for e in entries.values() if e.get("design_rationale"))
     with_motion     = sum(1 for e in entries.values() if e.get("motion_code"))
-    with_frames     = sum(1 for e in entries.values() if e.get("frames_manifest"))
+    with_storyboard = sum(1 for e in entries.values() if e.get("storyboard"))
+    with_embed      = sum(1 for e in entries.values() if e.get("embedding"))
     with_elo        = sum(1 for e in entries.values() if e.get("taste_score", {}).get("mu"))
     corpus_eligible = sum(1 for e in entries.values() if e.get("corpus_eligible"))
 
@@ -115,7 +124,8 @@ if __name__ == "__main__":
     console.print(f"  Total entries:        {count}")
     console.print(f"  With visual analysis: {sum(1 for e in entries.values() if e.get('visual'))}")
     console.print(f"  With motion code:     {with_motion}")
-    console.print(f"  With frame sequence:  {with_frames}")
-    console.print(f"  With Claude rationale:{with_rationale}")
+    console.print(f"  With storyboard:      {with_storyboard}")
+    console.print(f"  With rationale:       {with_rationale}")
+    console.print(f"  With embedding:       {with_embed}")
     console.print(f"  With Elo scores:      {with_elo}")
     console.print(f"  [green]Corpus eligible:      {corpus_eligible}[/green]")

@@ -15,12 +15,30 @@ LOGS_DIR     = ROOT / "logs"
 MASTER_FILE  = DATA_DIR / "master_dataset.jsonl"
 ELO_FILE     = DATA_DIR / "elo_scores.json"
 
+# ── Canonical per-site filenames (Plan A freeze) ─────────────────────────
+# Single source of truth. All scripts must import these, never hardcode.
+METADATA_FILE     = "metadata.json"
+VISUAL_FILE       = "visual_analysis.json"
+MOTION_CODE_FILE  = "motion_code.json"
+STORYBOARD_FILE   = "motion_storyboard.json"
+FRAMES_DIRNAME    = "frames"
+RATIONALE_FILE    = "taste_rationale.json"
+VLM_RAW_FILE      = "stage2_vlm_raw.json"
+EMBED_FILE        = "embedding.json"
+# Legacy files (deprecated, read-only fallback, do not write new):
+LEGACY_LLAVA      = "llava_analysis.json"
+LEGACY_FRAMES     = "frames_manifest.json"
+LEGACY_CLAUDE     = "claude_rationale.json"
+LEGACY_RATIONALE_MD = "taste_rationale.md"
+
 # Ensure directories exist
 DATA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 # ── API Keys (Automatically picked up by litellm) ────────────────────────────
 # GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY should be set in .env
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # ── Unified Models (LiteLLM) ───────────────────────────────────────────────
 # The local stack

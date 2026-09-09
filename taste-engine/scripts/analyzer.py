@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from PIL import Image, ImageStat, ImageChops
 from colorthief import ColorThief
 from rich.console import Console
-from config import DATA_DIR
+from config import DATA_DIR, VISUAL_FILE
 
 console = Console()
 
@@ -179,7 +179,7 @@ def analyze_image(site_id: str) -> dict | None:
         "file_size_kb":      round(img_path.stat().st_size / 1024, 1),
     }
 
-    (site_dir / "visual_analysis.json").write_text(json.dumps(analysis, indent=2))
+    (site_dir / VISUAL_FILE).write_text(json.dumps(analysis, indent=2))
     console.print(
         f"[green]✓[/green] {site_id}: "
         f"palette=[bold]{analysis['palette_mood']}[/bold], "

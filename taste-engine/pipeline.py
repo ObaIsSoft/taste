@@ -8,14 +8,15 @@ Usage:
   python pipeline.py --from step3     # Resume from a specific step
   python pipeline.py --status         # Show what's done for each site
 
-Steps:
-  1. scrape      → screenshots + video + motion code
-  2. frames      → extract keyframes from video
-  3. visual      → color DNA, brightness, palette
-  4. llava       → local vision model classification
-  5. enrich      → Claude deep analysis (costs money)
-  6. compile     → merge everything into master_dataset.jsonl
-  7. validate    → pairwise Elo comparison session (interactive)
+Steps (canonical, Plan A freeze):
+  1. scrape      → screenshots + video + motion code (scripts/scraper.py)
+  2. frames      → extract keyframes via preprocess_video → frames/ + motion_storyboard.json
+  3. visual      → color DNA via analyzer → visual_analysis.json
+  4. llava       → DEPRECATED legacy (llava_analysis.json). Kept for compat only.
+  5. enrich      → local VLM+reasoner via enrich.py → taste_rationale.json + stage2_vlm_raw.json
+  6. embed       → nomic-embed-text via embed_rationale.py → embedding.json
+  7. compile     → merge everything into master_dataset.jsonl
+  8. validate    → pairwise TrueSkill session (Supabase is source of truth)
 """
 import sys
 import time
@@ -29,11 +30,16 @@ from rich import box
 sys.path.insert(0, str(Path(__file__).parent / "scripts"))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import DATA_DIR, MASTER_FILE, ANTHROPIC_API_KEY
+from config import (
+    DATA_DIR, MASTER_FILE,
+    METADATA_FILE, VISUAL_FILE, MOTION_CODE_FILE, STORYBOARD_FILE,
+    FRAMES_DIRNAME, RATIONALE_FILE, VLM_RAW_FILE, EMBED_FILE,
+    LEGACY_LLAVA,
+)
 
 console = Console()
 
-STEPS = ["scrape", "frames", "visual", "llava", "enrich", "compile", "validate"]
+STEPS = ["scrape", "frames", "visual", "llava", "enrich", "embed", "compile", "validate"]
 
 
 def run_step(step: str, site_id: str | None = None) -> bool:
@@ -52,17 +58,17 @@ def run_step(step: str, site_id: str | None = None) -> bool:
                 time.sleep(2)
 
         elif step == "frames":
-            from scripts.motion_capture import extract_frames
+            from scripts.preprocess_video import process_video
             dirs = [DATA_DIR / site_id] if site_id else sorted(DATA_DIR.iterdir())
             for d in dirs:
                 if not isinstance(d, Path):
                     d = DATA_DIR / d
-                if not d.is_dir() or not (d / "metadata.json").exists():
+                if not d.is_dir() or not (d / METADATA_FILE).exists():
                     continue
-                if (d / "frames_manifest.json").exists():
+                if (d / STORYBOARD_FILE).exists() and (d / FRAMES_DIRNAME).is_dir():
                     console.print(f"[yellow]⏭ Skip[/yellow] {d.name}")
                     continue
-                extract_frames(d.name)
+                process_video(d.name)
 
         elif step == "visual":
             from scripts.analyzer import analyze_image
@@ -72,12 +78,13 @@ def run_step(step: str, site_id: str | None = None) -> bool:
                     d = DATA_DIR / d
                 if not d.is_dir() or not (d / "screenshot_hero.png").exists():
                     continue
-                if (d / "visual_analysis.json").exists():
+                if (d / VISUAL_FILE).exists():
                     console.print(f"[yellow]⏭ Skip[/yellow] {d.name}")
                     continue
                 analyze_image(d.name)
 
         elif step == "llava":
+            console.print("[yellow]DEPRECATED: llava step writes legacy llava_analysis.json only. Use enrich instead.[/yellow]")
             from scripts.vision_llm import analyze_with_llava
             import requests as req
             # Check Ollama is running
@@ -93,23 +100,24 @@ def run_step(step: str, site_id: str | None = None) -> bool:
                     d = DATA_DIR / d
                 if not d.is_dir() or not (d / "screenshot_hero.png").exists():
                     continue
-                if (d / "llava_analysis.json").exists():
+                if (d / LEGACY_LLAVA).exists():
                     console.print(f"[yellow]⏭ Skip[/yellow] {d.name}")
                     continue
                 analyze_with_llava(d.name)
                 time.sleep(0.5)
 
         elif step == "enrich":
-            if not ANTHROPIC_API_KEY:
-                console.print("[red]✗ ANTHROPIC_API_KEY not set in .env[/red]")
-                return False
-
-            from scripts.enrich_claude import enrich_with_claude
+            from scripts.enrich import enrich_with_claude
             from scripts.compile import load_master, save_master
             entries = load_master()
             targets = [site_id] if site_id else list(entries.keys())
+            # Fall back to DATA_DIR scan when master is empty (fresh checkout)
+            if not targets:
+                targets = [d.name for d in sorted(DATA_DIR.iterdir())
+                           if d.is_dir() and (d / METADATA_FILE).exists()
+                           and (site_id is None or d.name == site_id)]
             for sid in targets:
-                if entries.get(sid, {}).get("design_rationale"):
+                if (DATA_DIR / sid / RATIONALE_FILE).exists():
                     console.print(f"[yellow]⏭ Skip[/yellow] {sid}")
                     continue
                 result = enrich_with_claude(sid, entries.get(sid, {}))
@@ -119,6 +127,20 @@ def run_step(step: str, site_id: str | None = None) -> bool:
                     entries[sid]["design_rationale"] = result
                     save_master(entries)
                 time.sleep(2)
+
+        elif step == "embed":
+            from scripts.embed_rationale import generate_embedding
+            dirs = [DATA_DIR / site_id] if site_id else sorted(DATA_DIR.iterdir())
+            for d in dirs:
+                if not isinstance(d, Path):
+                    d = DATA_DIR / d
+                if not d.is_dir() or not (d / RATIONALE_FILE).exists():
+                    continue
+                if (d / EMBED_FILE).exists():
+                    console.print(f"[yellow]⏭ Skip[/yellow] {d.name}")
+                    continue
+                generate_embedding(d.name)
+                time.sleep(1)
 
         elif step == "compile":
             from scripts.compile import compile_all
@@ -140,14 +162,14 @@ def run_step(step: str, site_id: str | None = None) -> bool:
 
 def show_status() -> None:
     """Show what pipeline steps are complete for each site."""
-    table = Table(title="TASTE Pipeline Status", box=box.ROUNDED)
+    table = Table(title="TASTE Pipeline Status (canonical)", box=box.ROUNDED)
     table.add_column("Site ID",  style="cyan")
     table.add_column("Scraped",  justify="center")
     table.add_column("Video",    justify="center")
-    table.add_column("Frames",   justify="center")
+    table.add_column("Storyboard", justify="center")
     table.add_column("Visual",   justify="center")
-    table.add_column("LLaVA",    justify="center")
-    table.add_column("Claude",   justify="center")
+    table.add_column("Rationale", justify="center")
+    table.add_column("Embed",    justify="center")
     table.add_column("Elo",      justify="center")
 
     from config import ELO_FILE
@@ -165,12 +187,12 @@ def show_status() -> None:
 
         table.add_row(
             sid,
-            check("metadata.json"),
+            check(METADATA_FILE),
             "✅" if has_video else "❌",
-            check("frames_manifest.json"),
-            check("visual_analysis.json"),
-            check("llava_analysis.json"),
-            check("claude_rationale.json"),
+            check(STORYBOARD_FILE),
+            check(VISUAL_FILE),
+            check(RATIONALE_FILE),
+            check(EMBED_FILE),
             has_elo,
         )
 

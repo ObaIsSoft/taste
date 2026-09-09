@@ -14,14 +14,14 @@ from litellm import embedding
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from config import DATA_DIR, EMBEDDING_MODEL
+from config import DATA_DIR, EMBEDDING_MODEL, RATIONALE_FILE, EMBED_FILE
 
 console = Console()
 
 def generate_embedding(site_id: str):
     site_dir = DATA_DIR / site_id
-    rationale_path = site_dir / "taste_rationale.json"
-    embed_path = site_dir / "embedding.json"
+    rationale_path = site_dir / RATIONALE_FILE
+    embed_path = site_dir / EMBED_FILE
 
     if not rationale_path.exists():
         return False
@@ -55,6 +55,6 @@ if __name__ == "__main__":
         generate_embedding(args.site)
     else:
         for site_dir in sorted(DATA_DIR.iterdir()):
-            if site_dir.is_dir() and (site_dir / "taste_rationale.json").exists():
+            if site_dir.is_dir() and (site_dir / RATIONALE_FILE).exists():
                 generate_embedding(site_dir.name)
                 time.sleep(1)  # respect rate limits

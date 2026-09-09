@@ -1,5 +1,7 @@
 """
-vision_llm.py — Step 4: Local LLaVA pass on hero screenshot.
+vision_llm.py — DEPRECATED legacy Step 4 (writes llava_analysis.json).
+Kept for compat only. Canonical forensic VLM output is stage2_vlm_raw.json
+via enrich.py. See goals.md mid-term: wire into extract_taste, then remove.
 """
 import sys
 import json
@@ -11,7 +13,7 @@ from litellm import completion
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from config import DATA_DIR, VISION_MODEL
+from config import DATA_DIR, VISION_MODEL, LEGACY_LLAVA
 
 console = Console()
 
@@ -77,7 +79,7 @@ def analyze_with_llava(site_id: str) -> dict | None:
         console.print(f"[red]✗ Model request failed for {site_id}: {e}[/red]")
         return None
 
-    (site_dir / "llava_analysis.json").write_text(json.dumps(analysis, indent=2))
+    (site_dir / LEGACY_LLAVA).write_text(json.dumps(analysis, indent=2))
     console.print(
         f"[green]✓[/green] {site_id}: "
         f"{analysis.get('aesthetic_category','?')} / "
@@ -101,7 +103,7 @@ if __name__ == "__main__":
         for site_dir in sorted(DATA_DIR.iterdir()):
             if not site_dir.is_dir() or not (site_dir / "screenshot_hero.png").exists():
                 continue
-            if (site_dir / "llava_analysis.json").exists():
+            if (site_dir / LEGACY_LLAVA).exists():
                 console.print(f"[yellow]⏭ Skip[/yellow] {site_dir.name}")
                 continue
             analyze_with_llava(site_dir.name)

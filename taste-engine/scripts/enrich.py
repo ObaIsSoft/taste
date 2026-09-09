@@ -1,5 +1,7 @@
 """
-enrich_claude.py — Step 5: Deep enrichment via Claude with motion frame sequence.
+enrich.py — Step 5: Deep enrichment via local VLM + reasoner (canonical).
+Writes taste_rationale.json + stage2_vlm_raw.json. See config.RATIONALE_FILE.
+
 
 This is the core taste extraction step. Unlike the original plan:
   1. We pass the HERO screenshot + up to 5 SEQUENTIAL FRAMES to Claude
@@ -15,7 +17,7 @@ import time
 from pathlib import Path
 from rich.console import Console
 from litellm import completion
-from config import DATA_DIR, VISION_MODEL, REASONING_MODEL, LOGS_DIR
+from config import DATA_DIR, VISION_MODEL, REASONING_MODEL, LOGS_DIR, RATIONALE_FILE, VLM_RAW_FILE
 
 console = Console()
 
@@ -102,7 +104,7 @@ def enrich_with_claude(site_id: str, entry: dict) -> dict | None:
     content_blocks = []
 
     # 1. Hero screenshot
-    hero_b64, hero_type = load_image_b64(hero_path, max_kb=1500)
+    hero_b64, hero_type = load_image_b64(hero_path, max_kb=600)  # Aggressively downsample to save VRAM
     content_blocks.append({
         "type": "image_url",
         "image_url": {"url": f"data:{hero_type};base64,{hero_b64}"}
@@ -111,6 +113,28 @@ def enrich_with_claude(site_id: str, entry: dict) -> dict | None:
         "type": "text",
         "text": "↑ Above: Above-the-fold hero screenshot (static state)\n",
     })
+
+    # 2. Sequential Scroll Keyframes (Equally spaced to prevent VRAM explosion)
+    frame_files = sorted(list(site_dir.glob("frame_*.jpg")))
+    sampled_frames = []
+    if len(frame_files) > 0:
+        if len(frame_files) <= 4:
+            sampled_frames = frame_files
+        else:
+            step = len(frame_files) / 4.0
+            sampled_frames = [frame_files[int(i * step)] for i in range(4)]
+            
+        for idx, fpath in enumerate(sampled_frames):
+            f_b64, f_type = load_image_b64(fpath, max_kb=300) # Extreme downsample for sequence frames
+            content_blocks.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{f_type};base64,{f_b64}"}
+            })
+            
+        content_blocks.append({
+            "type": "text",
+            "text": f"↑ Above: {len(sampled_frames)} sequential scroll frames showing site interaction.\n",
+        })
 
     # ── Context from previous analysis steps (Stage 1) ───────────────
     metadata        = entry.get("metadata") or {}
@@ -139,10 +163,7 @@ Use this exact JSON schema:
   "whitespace_distribution": "dense | balanced | extreme_empty_space"
 }
 """
-    content_blocks = [
-        {"type": "image_url", "image_url": {"url": f"data:{hero_type};base64,{hero_b64}"}},
-        {"type": "text", "text": vlm_prompt}
-    ]
+    content_blocks.append({"type": "text", "text": vlm_prompt})
 
     try:
         console.print(f"  [dim]↳ Running Stage 2: {VISION_MODEL} (Forensic VLM)...[/dim]")
@@ -208,7 +229,7 @@ Respond ONLY with a valid JSON object matching this exact schema:
         result["enriched_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         result["model"]       = f"{VISION_MODEL} (Vision) -> {REASONING_MODEL} (Struct)"
 
-        (site_dir / "taste_rationale.json").write_text(json.dumps(result, indent=2))
+        (site_dir / RATIONALE_FILE).write_text(json.dumps(result, indent=2))
         
         # Cleanup the raw md file on success
         # try:
@@ -222,7 +243,7 @@ Respond ONLY with a valid JSON object matching this exact schema:
     except json.JSONDecodeError as e:
         console.print(f"[red]✗ JSON parse error for {site_id} from {REASONING_MODEL}: {e}[/red]")
         raw_save = {"raw_response": json_raw, "parse_error": True}
-        (site_dir / "claude_rationale_raw.json").write_text(json.dumps(raw_save, indent=2))
+        (site_dir / "taste_rationale_raw.json").write_text(json.dumps(raw_save, indent=2))
         return None
     except Exception as e:
         console.print(f"[red]✗ Enrichment failed for {site_id}: {e}[/red]")

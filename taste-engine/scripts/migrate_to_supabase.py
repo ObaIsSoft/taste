@@ -11,7 +11,7 @@ from pathlib import Path
 from supabase import create_client, Client
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import DATA_DIR
+from config import DATA_DIR, EMBED_FILE
 from rich.console import Console
 
 console = Console()
@@ -54,7 +54,7 @@ def migrate():
         comparisons = data.get("comparisons", 0)
         
         # Load embedding
-        emb_path = DATA_DIR / site_id / "embedding.json"
+        emb_path = DATA_DIR / site_id / EMBED_FILE
         vector = None
         if emb_path.exists():
             vector = json.loads(emb_path.read_text()).get("vector")

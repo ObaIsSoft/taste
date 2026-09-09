@@ -16,7 +16,10 @@ from rich.table import Table
 from rich.panel import Panel
 from rich import box
 import trueskill
-from config import DATA_DIR, ELO_FILE, MIN_COMPARISONS
+from config import (
+    DATA_DIR, ELO_FILE, MIN_COMPARISONS,
+    METADATA_FILE, RATIONALE_FILE, EMBED_FILE,
+)
 
 console = Console()
 
@@ -82,10 +85,10 @@ def init_rating_for_site(site_id: str, ratings: dict) -> None:
 # ── Comparison session ─────────────────────────────────────────────────────
 
 def get_sites_to_compare() -> list[str]:
-    """Get all site IDs that have Claude rationale (ready for evaluation)."""
+    """Get all site IDs that have rationale JSON (ready for evaluation)."""
     sites = []
     for site_dir in DATA_DIR.iterdir():
-        if site_dir.is_dir() and (site_dir / "taste_rationale.md").exists():
+        if site_dir.is_dir() and (site_dir / RATIONALE_FILE).exists():
             sites.append(site_dir.name)
     return sorted(sites)
 
@@ -114,7 +117,7 @@ def pick_pair(ratings: dict, all_sites: list[str]) -> tuple[str, str] | None:
     # Load embeddings
     embeddings = {}
     for s in all_sites:
-        emb_path = DATA_DIR / s / "embedding.json"
+        emb_path = DATA_DIR / s / EMBED_FILE
         if emb_path.exists():
             embeddings[s] = json.loads(emb_path.read_text()).get("vector", [])
         else:
@@ -148,15 +151,19 @@ def load_display_info(site_id: str) -> dict:
     site_dir = DATA_DIR / site_id
     info = {"id": site_id, "title": site_id, "url": "", "tags": []}
 
-    meta_path = site_dir / "metadata.json"
+    meta_path = site_dir / METADATA_FILE
     if meta_path.exists():
         meta = json.loads(meta_path.read_text())
         info["title"] = meta.get("title", site_id)
         info["url"]   = meta.get("url", "")
 
-    rationale_path = site_dir / "taste_rationale.md"
+    rationale_path = site_dir / RATIONALE_FILE
     if rationale_path.exists():
-        rat_text = rationale_path.read_text()
+        try:
+            rat = json.loads(rationale_path.read_text())
+            rat_text = rat.get("taste_rule", "") or json.dumps(rat)[:400]
+        except Exception:
+            rat_text = rationale_path.read_text()[:400]
         info["rationale_excerpt"] = rat_text[:400] + "..."
     else:
         info["rationale_excerpt"] = "No rationale generated yet."
