@@ -347,7 +347,7 @@ def show_rankings(ratings: dict | None = None) -> None:
 
         # Load title
         title = "?"
-        meta_path = DATA_DIR / sid / "metadata.json"
+        meta_path = DATA_DIR / sid / METADATA_FILE
         if meta_path.exists():
             meta  = json.loads(meta_path.read_text())
             title = meta.get("title", sid)[:25]

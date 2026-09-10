@@ -17,6 +17,9 @@ load_dotenv(env_path)
 
 from rich.console import Console
 from litellm import completion
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import METADATA_FILE, VISUAL_FILE, RATIONALE_FILE
 
 console = Console()
 
@@ -59,9 +62,9 @@ def build_markdown_table(site_ids, data_dir: Path) -> str:
 
     rows = []
     for site_id in site_ids:
-        meta_path = data_dir / site_id / "metadata.json"
-        visual_path = data_dir / site_id / "visual_analysis.json"
-        rationale_path = data_dir / site_id / "taste_rationale.json"
+        meta_path = data_dir / site_id / METADATA_FILE
+        visual_path = data_dir / site_id / VISUAL_FILE
+        rationale_path = data_dir / site_id / RATIONALE_FILE
 
         if not meta_path.exists() or not visual_path.exists() or not rationale_path.exists():
             continue

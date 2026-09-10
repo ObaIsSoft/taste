@@ -53,6 +53,7 @@ htmlcov/
 *.pth
 *.onnx
 *.bin
+*.gguf
 
 # Node (if web frontend)
 node_modules/

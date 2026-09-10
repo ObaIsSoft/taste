@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from playwright.sync_api import sync_playwright
 from PIL import Image
 from rich.console import Console
-from config import DATA_DIR, VIEWPORT, SCROLL_SPEED, SCROLL_PAUSE, SCROLL_DURATION
+from config import DATA_DIR, VIEWPORT, SCROLL_SPEED, SCROLL_PAUSE, SCROLL_DURATION, METADATA_FILE, MOTION_CODE_FILE
 
 console = Console()
 
@@ -373,8 +373,8 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
                 "scraped_at":  time.strftime("%Y-%m-%dT%H:%M:%S"),
             }
 
-            (site_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
-            (site_dir / "motion_code.json").write_text(json.dumps(motion_code, indent=2))
+            (site_dir / METADATA_FILE).write_text(json.dumps(metadata, indent=2))
+            (site_dir / MOTION_CODE_FILE).write_text(json.dumps(motion_code, indent=2))
 
             result.update({"status": "ok", "title": title, "motion_libs": motion_libs})
             console.print(f"[green]✓ Scraped[/green] {site_id} — {title}")

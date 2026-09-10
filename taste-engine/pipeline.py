@@ -51,7 +51,7 @@ def run_step(step: str, site_id: str | None = None) -> bool:
             from scripts.scraper import scrape_site, SITES
             targets = [s for s in SITES if site_id is None or s["id"] == site_id]
             for s in targets:
-                if (DATA_DIR / s["id"] / "metadata.json").exists():
+                if (DATA_DIR / s["id"] / METADATA_FILE).exists():
                     console.print(f"[yellow]⏭ Skip[/yellow] {s['id']}")
                     continue
                 scrape_site(s["url"], s["id"])

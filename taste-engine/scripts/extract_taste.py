@@ -13,7 +13,7 @@ from rich.console import Console
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from litellm import completion
-from config import STORYBOARD_FILE
+from config import STORYBOARD_FILE, METADATA_FILE, VISUAL_FILE
 
 console = Console()
 
@@ -37,8 +37,8 @@ def build_markdown_table(site_ids, data_dir: Path) -> str:
     rows = []
     
     for site_id in site_ids:
-        meta_path = data_dir / site_id / "metadata.json"
-        visual_path = data_dir / site_id / "visual_analysis.json"
+        meta_path = data_dir / site_id / METADATA_FILE
+        visual_path = data_dir / site_id / VISUAL_FILE
         motion_path = data_dir / site_id / STORYBOARD_FILE
         
         if not meta_path.exists() or not visual_path.exists():

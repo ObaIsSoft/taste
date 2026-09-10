@@ -1,12 +1,15 @@
 from pathlib import Path
 import json
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from config import METADATA_FILE, MOTION_CODE_FILE
 
 data_dir = Path("data")
 missing_files = {}
 
 required = [
-    "metadata.json",
-    "motion_code.json",
+    METADATA_FILE,
+    MOTION_CODE_FILE,
     "screenshot_hero.png",
     "screenshot_full.png"
 ]

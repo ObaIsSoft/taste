@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from rich.console import Console
 from litellm import completion
-from config import DATA_DIR, VISION_MODEL, REASONING_MODEL, LOGS_DIR, RATIONALE_FILE, VLM_RAW_FILE
+from config import DATA_DIR, VISION_MODEL, REASONING_MODEL, LOGS_DIR, RATIONALE_FILE, VLM_RAW_FILE, MOTION_CODE_FILE
 
 console = Console()
 
@@ -49,7 +49,7 @@ def load_image_b64(path: str | Path, max_kb: int = 2000) -> tuple[str, str]:
 
 def build_motion_context(site_id: str) -> str:
     """Build a text summary of extracted motion code for the prompt."""
-    motion_path = DATA_DIR / site_id / "motion_code.json"
+    motion_path = DATA_DIR / site_id / MOTION_CODE_FILE
     if not motion_path.exists():
         return "No motion code extracted."
 

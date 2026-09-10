@@ -42,7 +42,7 @@ def migrate():
         console.print("[yellow]No ratings.json found. Initializing defaults from data directory.[/yellow]")
         ratings_data = {}
         for site_dir in DATA_DIR.glob("site-*"):
-            if site_dir.is_dir() and (site_dir / "embedding.json").exists():
+            if site_dir.is_dir() and (site_dir / EMBED_FILE).exists():
                 ratings_data[site_dir.name] = {}
 
     for site_id, data in ratings_data.items():

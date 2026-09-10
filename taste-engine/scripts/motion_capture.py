@@ -1,5 +1,7 @@
 """
-motion_capture.py — Step 2: Extract keyframes from recorded video using ffmpeg.
+motion_capture.py - DEPRECATED legacy Step 2 (ffmpeg-based, writes legacy frames manifest).
+Canonical is preprocess_video.py -> frames/ + motion_storyboard.json.
+Kept for compat only, do not use in pipeline.
 
 THE PROBLEM WE SOLVE HERE:
   Playwright starts recording the instant the browser opens — before the page
@@ -31,7 +33,7 @@ import io
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from config import DATA_DIR, LOGS_DIR
+from config import DATA_DIR, LOGS_DIR, METADATA_FILE, LEGACY_FRAMES
 
 console = Console()
 
@@ -225,7 +227,7 @@ def extract_frames(site_id: str) -> list[str]:
         "blank_probe_count": blank_count,
         "total_probe_count": len(probe_results),
     }
-    (site_dir / "frames_manifest.json").write_text(json.dumps(manifest, indent=2))
+    (site_dir / LEGACY_FRAMES).write_text(json.dumps(manifest, indent=2))
 
     avg_score = (
         sum(f["content_score"] for f in frame_metadata) / len(frame_metadata)
@@ -265,6 +267,6 @@ if __name__ == "__main__":
         extract_frames(args.site)
     else:
         for site_dir in sorted(DATA_DIR.iterdir()):
-            if not site_dir.is_dir() or not (site_dir / "metadata.json").exists():
+            if not site_dir.is_dir() or not (site_dir / METADATA_FILE).exists():
                 continue
             extract_frames(site_dir.name)

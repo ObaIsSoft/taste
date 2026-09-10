@@ -25,7 +25,7 @@ except ImportError:
 
 from rich.console import Console
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import DATA_DIR
+from config import DATA_DIR, STORYBOARD_FILE
 
 console = Console()
 
@@ -138,7 +138,7 @@ def process_video(site_id):
                     prev_downsampled = current_ds
                     
         # Write manifest
-        manifest_path = site_dir / "motion_storyboard.json"
+        manifest_path = site_dir / STORYBOARD_FILE
         manifest_path.write_text(json.dumps({
             "total_extracted": len(extracted_frames),
             "mse_threshold": MSE_THRESHOLD,
