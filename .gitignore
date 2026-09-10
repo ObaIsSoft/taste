@@ -58,3 +58,4 @@ htmlcov/
 # Node (if web frontend)
 node_modules/
 .next/
+

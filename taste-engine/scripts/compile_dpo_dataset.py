@@ -2,6 +2,7 @@ import os
 import json
 import random
 import sys
+import math
 from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client
@@ -9,7 +10,7 @@ from supabase import create_client
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import (
     METADATA_FILE, VISUAL_FILE, MOTION_CODE_FILE,
-    RATIONALE_FILE, VLM_RAW_FILE,
+    RATIONALE_FILE, VLM_RAW_FILE, ELO_FILE
 )
 
 env_path = Path(__file__).parent.parent / ".env"
@@ -116,16 +117,10 @@ def format_metrics(metrics):
         f"- Visual Forensic Description: {metrics['vlm_raw_description']}"
     )
 
-def format_rationale(letter, rationale, metrics, is_winner=True):
+def format_rationale(letter, rationale, metrics):
     taste_rule = rationale.get("taste_rule", "N/A")
-    if is_winner:
-        premium = " ".join(rationale.get("premium_signals", []))
-        return f"Variant {letter} demonstrates elite aesthetic execution.\nTaste Rule: {taste_rule}\nPremium Signals: {premium}"
-    else:
-        ws = metrics.get('whitespace_ratio', 'standard')
-        return (f"Variant {letter} is the better design. It has a very clean and modern look that is easy to implement. "
-                f"The layout uses standard spacing (Whitespace: {ws}), making the content easy to read and functional. "
-                "The design is accessible, standard, and looks like a normal, professional website without being overly complicated.")
+    premium = " ".join(rationale.get("premium_signals", []))
+    return f"Variant {letter} demonstrates elite aesthetic execution.\nTaste Rule: {taste_rule}\nPremium Signals: {premium}"
 
 def main():
     print("Fetching match history from Supabase...")
@@ -134,6 +129,10 @@ def main():
     matches = response.data
     
     print(f"Found {len(matches)} matches in Supabase.")
+    
+    elo_scores = {}
+    if ELO_FILE.exists():
+        elo_scores = json.loads(ELO_FILE.read_text())
     
     valid_pairs = []
     seen_pairs = set()
@@ -144,6 +143,14 @@ def main():
             
         winner_id = match["winner_id"]
         loser_id = match["loser_id"]
+        
+        # Calculate TrueSkill Margin for MADPO
+        mu_w = elo_scores.get(winner_id, {}).get("mu", 25.0)
+        sigma_w = elo_scores.get(winner_id, {}).get("sigma", 8.333)
+        mu_l = elo_scores.get(loser_id, {}).get("mu", 25.0)
+        sigma_l = elo_scores.get(loser_id, {}).get("sigma", 8.333)
+        
+        margin = (mu_w - mu_l) / math.sqrt(sigma_w**2 + sigma_l**2)
         
         # Deduplicate A vs B matches
         pair_sig = tuple(sorted([winner_id, loser_id]))
@@ -181,13 +188,14 @@ def main():
             winner_d = var_A_data if var_A_is_winner else var_B_data
             loser_d = var_B_data if var_A_is_winner else var_A_data
             
-            chosen_text = format_rationale(winner_letter, winner_d["rationale"], winner_d["metrics"], is_winner=True)
-            rejected_text = format_rationale(loser_letter, loser_d["rationale"], loser_d["metrics"], is_winner=False)
+            chosen_text = format_rationale(winner_letter, winner_d["rationale"], winner_d["metrics"])
+            rejected_text = format_rationale(loser_letter, loser_d["rationale"], loser_d["metrics"])
             
             valid_pairs.append({
                 "prompt": prompt,
                 "chosen": chosen_text,
-                "rejected": rejected_text
+                "rejected": rejected_text,
+                "margin": round(margin, 4)
             })
         
     print(f"Generated {len(valid_pairs)} valid DPO tuples.")
