@@ -2,7 +2,7 @@
 
 ## Test Subject
 - **Model:** `taste-critic` (Local deployment via Ollama)
-- **Base Weights:** `taste-critic-sft.Q4_K_M.gguf` (4-bit quantized SFT model)
+- **Base Weights:** `taste-critic-sft.Q4_K_M.gguf` (4-bit quantized SFT model) and `taste_critic.Q4_K_M.gguf` (4-bit Alpha DPO payload). Both Q4 models were evaluated for positional bias.
 - **Parameters:** `temperature=0.7`, `num_predict=128`
 - **System Prompt:**
   ```text

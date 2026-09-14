@@ -396,8 +396,8 @@ One minor artifact was observed: when presented with an intentionally sparse pay
 * **The Fix:** In production, the headless crawler must simply guarantee a complete metric payload for every evaluation request. 
 
 ### The Q4 Quantization Collapse
-While the 16-bit PyTorch model in Colab performed flawlessly, the exported `Q4_K_M.gguf` model failed the local evaluation tests (scoring near 50/50 and occasionally picking the rejected variant). 
-* **The Cause:** The MADPO TrueSkill decision boundary is extremely subtle and relies on high-precision floating-point weights. The aggressive 4-bit (`Q4_K_M`) quantization process rounded off these fine-grained differences, causing the model to lose its mathematical resolution and collapse back toward its base SFT distribution.
+While the 16-bit PyTorch model in Colab performed flawlessly, the exported 4-bit models (`taste_critic.Q4_K_M.gguf` and the base `taste-critic-sft.Q4_K_M.gguf`) failed the local evaluation tests (scoring near 50/50 and occasionally picking the rejected variant). 
+* **The Cause:** The MADPO TrueSkill decision boundary is extremely subtle and relies on high-precision floating-point weights. The aggressive 4-bit (`Q4_K_M`) quantization process rounded off these fine-grained differences, causing both Q4 models to lose their mathematical resolution and collapse back toward their base distribution. Note: Due to this fatal flaw, both obsolete `.gguf` files were permanently deleted from the workspace to free up 8.8GB of memory.
 * **The Fix:** We must either export the GGUF at a much higher precision (e.g., `f16` or `q8_0`) to preserve the TrueSkill mathematics locally, or bypass local execution entirely and use the 16-bit model directly in Colab for the upcoming batch generation tasks.
 
 ---
