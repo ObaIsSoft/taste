@@ -3,6 +3,7 @@ import json
 import random
 import sys
 import math
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client
@@ -150,7 +151,12 @@ def main():
         mu_l = elo_scores.get(loser_id, {}).get("mu", 25.0)
         sigma_l = elo_scores.get(loser_id, {}).get("sigma", 8.333)
         
-        margin = (mu_w - mu_l) / math.sqrt(sigma_w**2 + sigma_l**2)
+        raw_margin = (mu_w - mu_l) / math.sqrt(sigma_w**2 + sigma_l**2)
+        # Bound and normalize margin to prevent 30x gradient spikes [0.25, 2.0]
+        if raw_margin <= 0.1:
+            margin = 0.25
+        else:
+            margin = min(2.0, max(0.25, raw_margin * 0.6))
         
         # Deduplicate A vs B matches
         pair_sig = tuple(sorted([winner_id, loser_id]))
@@ -167,6 +173,26 @@ def main():
             
         if not winner_data["rationale"] or not loser_data["rationale"]:
             continue
+            
+        # Filter 1: Reject samples containing VLM error messages
+        refusal_patterns = [
+            r"not sufficient",
+            r"please upload",
+            r"cannot analyze",
+            r"no image provided"
+        ]
+        refusal_regex = re.compile("|".join(refusal_patterns), re.IGNORECASE)
+        vlm_w = winner_data["metrics"].get("vlm_raw_description", "")
+        vlm_l = loser_data["metrics"].get("vlm_raw_description", "")
+        if refusal_regex.search(vlm_w) or refusal_regex.search(vlm_l):
+            continue
+            
+        # Filter 2: Reject zero-metric crawler failures (0px typography)
+        typo_w = winner_data["metrics"].get("typography", "")
+        typo_l = loser_data["metrics"].get("typography", "")
+        if "Display Typography: 0px" in typo_w or "Display Typography: 0px" in typo_l:
+            continue
+            
         # Create both permutations to prevent positional bias in DPO (A vs B, B vs A)
         permutations = [
             (winner_id, winner_data, True, loser_id, loser_data, False),
@@ -176,7 +202,13 @@ def main():
         for p in permutations:
             var_A_id, var_A_data, var_A_is_winner, var_B_id, var_B_data, var_B_is_winner = p
             
-            prompt = (
+            system_prompt = (
+                "You are a ruthless, hyper-objective aesthetic design critic. You evaluate UI variants strictly on empirical quantitative metrics (DOM depth, whitespace ratio, typographic ratios, and structural tension).\n\n"
+                "CRITICAL DIRECTIVE: You must remain completely blind to the sequential order of the variants. Variant A and Variant B have an equal mathematical probability of winning. Your verdict must be derived exclusively from the causal superiority of the metrics, never their order.\n\n"
+                "Output zero conversational preamble. Begin immediately with the winning verdict."
+            )
+
+            prompt_text = (
                 "Evaluate Variant A and Variant B for aesthetic equilibrium and structural tension.\n\n"
                 "VARIANT A METRICS:\n" + format_metrics(var_A_data["metrics"]) + "\n\n"
                 "VARIANT B METRICS:\n" + format_metrics(var_B_data["metrics"])
@@ -192,9 +224,16 @@ def main():
             rejected_text = format_rationale(loser_letter, loser_d["rationale"], loser_d["metrics"])
             
             valid_pairs.append({
-                "prompt": prompt,
-                "chosen": chosen_text,
-                "rejected": rejected_text,
+                "prompt": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt_text}
+                ],
+                "chosen": [
+                    {"role": "assistant", "content": chosen_text}
+                ],
+                "rejected": [
+                    {"role": "assistant", "content": rejected_text}
+                ],
                 "margin": round(margin, 4)
             })
         

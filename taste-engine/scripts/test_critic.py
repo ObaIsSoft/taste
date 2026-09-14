@@ -6,15 +6,15 @@ from rich.console import Console
 
 console = Console()
 DATA_FILE = Path(__file__).parent.parent / "results" / "master_dpo_dataset.jsonl"
-OUT_FILE = Path(__file__).parent.parent / "model_evaluation.md"
+OUT_FILE = Path(__file__).parent.parent / "model_evaluation_v2.md"
 
 def query_ollama(prompt: str) -> str:
     payload = {
-        "model": "taste-critic",
+        "model": "taste-critic-v2",
         "prompt": prompt,
         "stream": False,
         "options": {
-            "temperature": 0.2,
+            "temperature": 0.7,
             "num_predict": 128
         }
     }
