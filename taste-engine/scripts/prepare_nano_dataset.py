@@ -1,9 +1,13 @@
 import json
 import re
 import torch
+import random
 import os
 
 def prepare_dataset(input_file, output_tensor_file):
+    # Set seed for deterministic sandbox mocking
+    random.seed(42)
+    
     with open(input_file, 'r', encoding='utf-8') as f:
         data = [json.loads(line) for line in f]
 
@@ -32,20 +36,33 @@ def prepare_dataset(input_file, output_tensor_file):
         metrics_a = split_a[1].strip()
         metrics_b = split_b[1].strip()
         
-        # Extract the 4 core metrics for A
+        # Extract the 4 base OpenCV/DOM metrics for A
         dom_a = get_val(metrics_a, r'Total DOM depth:\s*(\d+)')
         ws_a = get_val(metrics_a, r'Whitespace Ratio:\s*([\d\.]+)')
         cv_a = get_val(metrics_a, r'Color Variance:\s*([\d\.]+)')
         asym_a = get_val(metrics_a, r'Asymmetry Score:\s*([\d\.]+)')
         
-        # Extract the 4 core metrics for B
+        # MOCK the 3 Structured Forensic VLM Scalars for A (for sandbox overfitting)
+        intent_a = random.uniform(0.1, 1.0)
+        cohes_a = random.uniform(0.1, 1.0)
+        hier_a = random.uniform(0.1, 1.0)
+        
+        # Extract the 4 base OpenCV/DOM metrics for B
         dom_b = get_val(metrics_b, r'Total DOM depth:\s*(\d+)')
         ws_b = get_val(metrics_b, r'Whitespace Ratio:\s*([\d\.]+)')
         cv_b = get_val(metrics_b, r'Color Variance:\s*([\d\.]+)')
         asym_b = get_val(metrics_b, r'Asymmetry Score:\s*([\d\.]+)')
+
+        # MOCK the 3 Structured Forensic VLM Scalars for B
+        intent_b = random.uniform(0.1, 1.0)
+        cohes_b = random.uniform(0.1, 1.0)
+        hier_b = random.uniform(0.1, 1.0)
         
-        # Create continuous feature vector (length 8)
-        feature_vector = [dom_a, ws_a, cv_a, asym_a, dom_b, ws_b, cv_b, asym_b]
+        # Create continuous feature vector (length 14)
+        feature_vector = [
+            dom_a, ws_a, cv_a, asym_a, intent_a, cohes_a, hier_a,
+            dom_b, ws_b, cv_b, asym_b, intent_b, cohes_b, hier_b
+        ]
         
         # Determine target: 1 if A wins, 0 if B wins
         winner_is_a = 1.0 if re.search(r'\bVariant A\b', chosen_msgs[0]["content"], re.IGNORECASE) else 0.0
@@ -61,8 +78,7 @@ def prepare_dataset(input_file, output_tensor_file):
     Y_tensor = torch.tensor(Y, dtype=torch.float32)
     Margins_tensor = torch.tensor(margins, dtype=torch.float32)
 
-    # We need to normalize the DOM depth since it's in the thousands, while others are 0-1
-    # We will normalize each column independently (StandardScaler logic)
+    # We normalize the sequence columns independently
     means = X_tensor.mean(dim=0, keepdim=True)
     stds = X_tensor.std(dim=0, keepdim=True)
     stds[stds == 0] = 1.0 # Prevent div by zero
@@ -79,7 +95,7 @@ def prepare_dataset(input_file, output_tensor_file):
     
     torch.save(dataset, output_tensor_file)
     print(f"Data distillation complete. Processed {len(X)} tuples.")
-    print(f"Saved highly-optimized tensors to {output_tensor_file}")
+    print(f"Saved 14-token highly-optimized tensors to {output_tensor_file}")
 
 if __name__ == "__main__":
     prepare_dataset(

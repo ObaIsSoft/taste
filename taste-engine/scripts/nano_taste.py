@@ -14,8 +14,9 @@ class NanoTasteModel(nn.Module):
         self.continuous_projection = nn.Linear(1, d_model)
         
         # Positional Encoding: Allows attention to know which variable is which 
-        # (0=DOM_A, 1=WS_A, 2=COL_A, 3=ASYM_A, 4=DOM_B, 5=WS_B, 6=COL_B, 7=ASYM_B)
-        self.pos_embedding = nn.Embedding(8, d_model)
+        # (0-6 = DOM_A, WS_A, COL_A, ASYM_A, INTENT_A, COHES_A, HIER_A)
+        # (7-13 = DOM_B, WS_B, COL_B, ASYM_B, INTENT_B, COHES_B, HIER_B)
+        self.pos_embedding = nn.Embedding(14, d_model)
         
         # Nano-Transformer Blocks
         encoder_layer = nn.TransformerEncoderLayer(
@@ -31,13 +32,13 @@ class NanoTasteModel(nn.Module):
         self.fc = nn.Linear(d_model, 1)
 
     def forward(self, x):
-        # x is shape (batch_size, 8)
+        # x is shape (batch_size, 14)
         B, seq_len = x.shape
         
-        # Expand to (batch, 8, 1) for the linear projection
+        # Expand to (batch, 14, 1) for the linear projection
         x = x.unsqueeze(-1)
         
-        # Project floats to (batch, 8, d_model)
+        # Project floats to (batch, 14, d_model)
         x_emb = self.continuous_projection(x)
         
         # Add positional context
@@ -49,7 +50,7 @@ class NanoTasteModel(nn.Module):
         # Attention Matrix Matrix (discover cross-variable rules)
         out = self.transformer(x_emb)
         
-        # Global average pool across the 8 sequence tokens
+        # Global average pool across the 14 sequence tokens
         pooled = out.mean(dim=1)
         
         # Output probability (0 to 1)
