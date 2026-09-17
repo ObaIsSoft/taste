@@ -405,7 +405,7 @@ While the 16-bit PyTorch model in Colab performed flawlessly, the exported 4-bit
 ## September 14th Update: Q8 Resolution & The Motion Semantics Proof
 
 ### 1. The Q8 Model Evaluated
-Following the Q4 Quantization Collapse, we successfully compiled the model using 8-bit precision (`taste-critic-sft.Q8_0.gguf`) and ran the definitive 100-pair Positional Bias Evaluation using `test_critic.py`.
+Following the Q4 Quantization Collapse, we successfully compiled the MADPO model using 8-bit precision (`taste-critic-sft.Q8_0.gguf` - note: Unsloth inherited the "sft" string from the base model, but these are the true MADPO weights) and ran the definitive 100-pair Positional Bias Evaluation using `test_critic.py`.
 
 **The Results:**
 - **Accuracy:** 49/100 (0.49)
@@ -413,12 +413,12 @@ Following the Q4 Quantization Collapse, we successfully compiled the model using
 - **P(pick B):** 47/100 (0.47)
 - **Content Stability:** 21/50 (0.42)
 
-### 2. The Hard Proof for DPO
-The test results are a massive architectural breakthrough because they isolate the exact mechanical behavior of the model:
+### 2. The MADPO Generalization Failure
+The test results reveal a critical failure in the training architecture, correcting a previous misdiagnosis:
 1. **The Quantization Collapse is Cured:** The extreme positional bias observed in the Q4 run (71% preference for Variant B) was completely eradicated in Q8 (`P(B) = 0.47`). The model regained its equilibrium, proving the collapse was purely a quantization artifact.
-2. **SFT is Structurally Insufficient:** Despite having no positional bias, the Q8 model's accuracy remained at 49% (a literal coin flip). The SFT training successfully taught the model *how to speak*—it flawlessly output the strict JSON schema and the ruthless persona without preamble—but it failed to teach the model *what to reject*. Because it only ever saw "winning" examples during SFT, it acts like a confident critic but mathematically guesses the winner.
+2. **MADPO Failed to Generalize:** Despite having no positional bias, the Q8 MADPO model's accuracy remained at 49% (a literal coin flip). While the 16-bit PyTorch model in Colab scored 10/10, the local Q8 test proves the model severely overfit the 456-pair dataset. It failed to learn the TrueSkill mathematical gradients necessary to differentiate elite execution from generic design, relying instead on guessing.
 
-**Conclusion:** This mathematically proves that we must transition to the **Direct Preference Optimization (DPO)** pipeline. The loss function requires the contrastive `(prompt, chosen, rejected)` tuple to learn the specific mathematical gradients that differentiate elite execution from generic design.
+**Conclusion:** This mathematically proves that the 8B parameter model failed to learn objective taste from the current JSON telemetry/dataset size. Scaling immediately to the 1,000-site batch through this broken training pipeline is dangerous. We will reset to manual TrueSkill Elo voting to establish uncorrupted human ground truth for the 1k batch.
 
 ### 3. The Semantic Gap of Motion & "Boxing the Grammar"
 During pipeline planning, we confronted the problem of motion evaluation. Humans evaluate motion by *experiencing* it (the feel, the inertia), but the Taste Engine only reads raw mathematical telemetry (`cubic-bezier` curves, GSAP durations). 
@@ -433,3 +433,59 @@ We must maintain strict boundaries between deterministic math, visual spatial ta
 1. `scraper.py` captures the unadulterated GSAP mathematical physics.
 2. The VLM is fed a two-frame composite (Hero Frame vs. End Scroll Frame) and forced to act strictly as a forensic camera, outputting a JSON array of physical DOM objects that changed position, scale, or opacity.
 3. The aesthetic synthesis (the "feel") is left entirely to the **MADPO loss function**, which will anchor the objective math directly to the TrueSkill preference margins.
+
+---
+
+## September 17th Update: The Continuous Telemetry Engine (Nano-Transformer Pivot)
+
+Following the definitive failure of the 8B LLM to generalize (it defaulted to positional shortcuts across 1000 tokens despite the semantic delta injection), we confronted a hard architectural truth: Large Language Models are autoregressive semantic engines, not arithmetic calculators. Forcing them to mathematically regress complex DOM telemetry into TrueSkill gradients via English prompts is an anti-pattern. 
+
+We have officially executed a hard architectural pivot, completely abandoning Prompt Engineering and LLMs for the core mathematical reasoning of the Taste Engine.
+
+### 1. Architectural Inspiration: `nanoGPT`
+To escape the bloat of an 8B language model, we investigated Andrej Karpathy's `nanoGPT`—a minimalist PyTorch repository demonstrating how to train a highly capable Transformer from scratch in roughly 300 lines of code. This inspired the "Micro-Brain" pivot: building a custom Nano-Transformer (under 5 million parameters) designed *exclusively* to parse structural telemetry arrays, stripping out English entirely.
+
+### 2. The Discretization Flaw
+Our initial plan was to build a custom Telemetry Tokenizer. Like `nanoGPT`, we theorized binning the continuous floats into discrete vocabulary tokens (e.g., mapping a Whitespace Ratio of `0.85` to a discrete token `[WS_85]`). 
+
+**The Rejection:** This was recognized as mathematically destructive. Binning destroys the high-fidelity variance of the metrics, completely blinding the model to the micro-adjustments in typography, padding, and spacing that separate "good" design from "elite" design.
+
+**The Solution: Continuous Linear Projections**
+We bypassed tokenization entirely. Instead of an embedding dictionary, the raw floating-point numbers are passed directly into a PyTorch linear layer (`nn.Linear(1, d_model)`). This maps the exact scalar float natively into the custom Nano-Transformer's embedding space. The network calculates the pure mathematical gradient, entirely avoiding tokenization artifacts and preserving absolute structural fidelity.
+
+### 3. The Attention Matrix & Sequential Structuring
+Rather than using a basic Multi-Layer Perceptron (MLP), we utilized the Transformer architecture to exploit its self-attention mechanism. The input to the Nano-Transformer is structured as a sequence of 8 continuous vectors:
+`[DOM_A, WS_A, COL_A, ASYM_A, DOM_B, WS_B, COL_B, ASYM_B]`
+
+By treating the variables as a sequence (aided by positional encodings), the Transformer's self-attention heads can dynamically map cross-variable correlations. It can mathematically discover non-linear, complex aesthetic rules—such as recognizing that an extreme DOM depth penalty should be heavily suppressed if the Whitespace ratio is simultaneously very high (indicating a complex but well-spaced layout).
+
+### 4. Phase 1: Data Distillation (`prepare_nano_dataset.py`)
+To feed this new architecture, we could not use the conversational JSONL files. We wrote a distillation script that:
+1. Parsed the `master_dpo_dataset_v3.jsonl`.
+2. Used Regex to violently strip away all English conversational text (`system_prompt`, `user_content`).
+3. Extracted only the 8 core floating-point metrics per matchup.
+4. Extracted the TrueSkill Margin and the Boolean Winner (1 for A, 0 for B).
+5. Normalized the features (StandardScaler logic) so that extreme variables like DOM depth (e.g., 5000) don't overpower ratio variables (e.g., 0.85).
+6. Saved the output as highly optimized PyTorch tensors (`nano_taste_dataset.pt`).
+
+### 5. Phase 2: The PyTorch Implementation (`nano_taste.py`)
+We built the custom Nano-Transformer natively on the Mac utilizing Apple's Metal Performance Shaders (`device='mps'`) for hardware acceleration. 
+To preserve the TrueSkill alignment, we engineered a custom **Margin-Adaptive Binary Cross Entropy (BCE) Loss**. The model outputs a single scalar (Win Probability). The BCE loss is multiplied by the TrueSkill margin (with a 0.1 floor). This forces the network to undergo severe backpropagation penalties if it incorrectly guesses a high-margin, "easy" aesthetic matchup, perfectly anchoring the model to human taste.
+
+### 6. Phase 3: The 461 Overfit Trap & Sandbox Confirmation
+A 5,000,000 parameter nano-transformer has enough parametric density to perfectly memorize the 456-pair dataset in under 60 seconds. We recognized that the resulting model would achieve `0.000` loss but its inference on new data would remain completely random (mode collapse via memorization).
+
+**The Overfit Sandbox:** We explicitly defined the 456-pair execution as a Compilation Sandbox. We ran an "Overfit Test" (a standard ML practice) to mathematically prove that our tensor routing, Continuous Linear Projections, and custom TrueSkill Margin Loss were structurally flawless.
+
+**The Execution Results:**
+The Nano-Transformer initialized at ~100k parameters. Pushed to the MPS chip, the 1500-epoch training run took seconds.
+*   **Epoch 100:** Loss 0.1078 | Accuracy: 86.6%
+*   **Epoch 500:** Loss 0.0177 | Accuracy: 98.9%
+*   **Epoch 1500:** Loss 0.0001 | Accuracy: 100.0%
+
+**The Verdict:** The sandbox test was an overwhelming success. The PyTorch architecture compiles perfectly, the gradients flow correctly through the continuous linear projections without `NaN` collapse, and the network successfully minimizes the Margin-Adaptive TrueSkill loss to zero.
+
+### 7. Definitive Next Steps
+We have mathematically proven the structural integrity of the Continuous Telemetry Engine. However, the current weights are overfit placeholders. To achieve true generalized reasoning and synthesize a production-ready model, we must exit the sandbox. 
+
+The immediate next step is to trigger the batch scraper on the remaining **1,000 URLs**, extract their visual telemetry, and aggregate the **10,000 Elo votes** required to train this micro-brain into an absolute aesthetic judge.

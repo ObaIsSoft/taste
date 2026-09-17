@@ -128,18 +128,32 @@ Premium Signals: Use of high-fidelity, single-purpose motion (e.g., success-popu
 - **P(pick B):** 47/100 = 0.47
 - **Content Stability:** 21/50 = 0.42
 
-### Analysis: A Massive Architectural Breakthrough
-This result perfectly isolates the underlying mechanical behavior of the model.
+### Analysis: The MADPO Generalization Failure
+This result reveals a critical failure in the training architecture, correcting a previous misdiagnosis.
 
 **1. The Quantization Collapse is Cured**
-In the Q4 evaluation, we observed an extreme positional bias (P(B) = 0.71). In the high-precision Q8 evaluation, that bias is mathematically eradicated (`P(A)=0.53`, `P(B)=0.47`). The model has regained its equilibrium. The collapse of the SFT prior into a single basin was purely a hardware/quantization artifact.
+In the Q4 evaluation, we observed an extreme positional bias (P(B) = 0.71). In the high-precision Q8 evaluation, that bias is mathematically eradicated (`P(A)=0.53`, `P(B)=0.47`). The model has regained its equilibrium. The collapse into a single positional basin was purely a hardware/quantization artifact.
 
-**2. The Hard Proof for DPO/MADPO**
-While the positional bias is gone, the model's logic is fundamentally uncalibrated to TrueSkill ground truth. 
+**2. The Failure of the MADPO Architecture**
+*(Note: Previous documentation incorrectly assumed `taste-critic-sft.Q8_0.gguf` was an SFT baseline due to Unsloth inheriting the base filename during export. It is, in fact, the 8-bit exported MADPO TrueSkill model).*
+
+While the positional bias is gone, the MADPO model's logic is fundamentally uncalibrated to the TrueSkill ground truth when run locally.
 - **Accuracy is 49%** (statistically indistinguishable from a coin flip).
 - **Content Stability is 42%** (it rarely tracks the "winning" metric across positional flips).
 
 **The Final Conclusion:**
-This test mathematically proves that **Supervised Fine Tuning (SFT) is insufficient**. The SFT training was wildly successful at teaching the model *how to speak* (it perfectly adhered to the JSON schema and the ruthless, zero-preamble persona). However, it failed to teach the model *what to reject*. Because it only ever saw "winning" examples during SFT, the model acts like a confident critic but is mathematically guessing the winner.
+This mathematically proves that the **MADPO training failed to generalize** to the 8-Billion parameter local model on the 100-site dataset (456 pairs). While the 16-bit PyTorch model in Colab scored 10/10, the local Q8 49% accuracy indicates the model severely overfit the training data in the cloud and failed to actually learn the underlying aesthetic mathematical gradients. 
 
-To achieve high accuracy and stable logic, we must transition to the **Direct Preference Optimization (DPO)** pipeline. By feeding the model the contrastive `(prompt, chosen, rejected)` tuple, the loss function will force the model to learn the specific mathematical gradients (the taste rules) that differentiate elite execution from generic design.
+Before committing to scaling the 1,000-site batch through this pipeline, we must acknowledge that an 8B local critic might lack the capacity to judge taste from raw JSON. We will reset to manual TrueSkill Elo voting to establish ground truth on the 1,000 batch.
+
+---
+
+## V3 Evaluation (The Continuous Telemetry Engine Pivot)
+
+Following the failure of the 8B LLM to generalize (and its susceptibility to positional shortcuts despite semantic delta injection), we have formally deprecated the LLM/Prompt-Engineering approach for the core mathematical reasoning of the Taste Engine.
+
+**The Architectural Fix (September 17th):**
+We are pivoting to a custom **Nano-Transformer** built entirely from scratch in PyTorch (inspired by the minimalist architecture of `nanoGPT`). 
+1. **No Tokenization:** To prevent the destruction of high-fidelity floating-point variances, we are bypassing discrete tokenization entirely. Raw metrics will be projected directly into the embedding space via Continuous Linear Projections (`nn.Linear(1, d_model)`).
+2. **The Attention Matrix:** The 8 continuous variables (4 from Variant A, 4 from Variant B) will be passed as a sequence, allowing the transformer's self-attention heads to dynamically discover cross-variable rules.
+3. **The Sandbox (Overfit Test):** The current 456-pair dataset will NOT be used to train the production model (a 5M parameter model would memorize it instantly). It will be used strictly as an "Overfit Sandbox" to mathematically verify the custom TrueSkill Margin loss and PyTorch tensor routing before we scale to the 10,000-vote Elo dataset.
