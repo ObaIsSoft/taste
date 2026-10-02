@@ -11,7 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -232,6 +232,12 @@ class Settings(BaseSettings):
     analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
     claude: ClaudeSettings = Field(default_factory=ClaudeSettings)
 
+    supabase_url: str | None = Field(default=None, validation_alias="SUPABASE_URL")
+    supabase_service_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("SUPABASE_SERVICE_KEY", "SUPABASE_KEY")
+    )
+    storage_bucket: str = "captures"  # private: the voting API hands out signed URLs
+
     @property
     def captures_dir(self) -> Path:
         return self.data_dir / "captures"
@@ -239,6 +245,10 @@ class Settings(BaseSettings):
     @property
     def state_dir(self) -> Path:
         return self.data_dir / "state"
+
+    @property
+    def votes_path(self) -> Path:
+        return self.data_dir / "votes" / "votes.jsonl"
 
     def capture_dir(self, capture_id: str) -> Path:
         return self.captures_dir / capture_id

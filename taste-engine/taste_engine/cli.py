@@ -8,7 +8,7 @@ from pathlib import Path
 
 import anthropic
 
-from taste_engine import describe, manifest
+from taste_engine import db, describe, manifest
 from taste_engine.analysis import features
 from taste_engine.capture import runner, site
 from taste_engine.schemas import CaptureStatus, Cohort, Variant, capture_id
@@ -114,6 +114,37 @@ def _cmd_describe(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_publish(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    count = db.publish(settings, db.connect(settings), _capture_ids(args))
+    log.info("published %d captures", count)
+    return 0
+
+
+def _cmd_calibrate(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    ids = _capture_ids(args)
+    if not ids:
+        log.error("pass --ids with the calibration sites")
+        return 1
+    count = db.create_calibration(db.connect(settings), args.round, ids)
+    log.info("%s calibration set: %d pairs from %d captures", args.round, count, len(ids))
+    return 0
+
+
+def _cmd_voters_add(args: argparse.Namespace) -> int:
+    code = db.add_voter(db.connect(get_settings()), args.name)
+    print(f"{args.name}: invite code {code} (share it privately; it is their key)")
+    return 0
+
+
+def _cmd_votes_export(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    count = db.export_votes(db.connect(settings), settings.votes_path)
+    log.info("exported %d votes to %s", count, settings.votes_path)
+    return 0
+
+
 def _add_capture_selection(command: argparse.ArgumentParser) -> None:
     command.add_argument("--ids", help='site ids, e.g. "1-14,20"')
     command.add_argument(
@@ -160,6 +191,26 @@ def build_parser() -> argparse.ArgumentParser:
     describe_cmd.add_argument("--no-wait", action="store_true", help="submit and return")
     describe_cmd.add_argument("--collect-only", action="store_true", help="only collect results")
     describe_cmd.set_defaults(func=_cmd_describe)
+
+    publish = commands.add_parser("publish", help="upload captures to Supabase")
+    _add_capture_selection(publish)
+    publish.set_defaults(func=_cmd_publish)
+
+    calibrate = commands.add_parser("calibrate", help="create a calibration set (all pairs)")
+    _add_capture_selection(calibrate)
+    calibrate.add_argument("--round", choices=["visual", "motion"], required=True)
+    calibrate.set_defaults(func=_cmd_calibrate)
+
+    voters = commands.add_parser("voters", help="manage voters")
+    voters_sub = voters.add_subparsers(dest="action", required=True)
+    add = voters_sub.add_parser("add", help="create a voter and print their invite code")
+    add.add_argument("name")
+    add.set_defaults(func=_cmd_voters_add)
+
+    votes = commands.add_parser("votes", help="work with collected votes")
+    votes_sub = votes.add_subparsers(dest="action", required=True)
+    export = votes_sub.add_parser("export", help="download every vote to data/votes")
+    export.set_defaults(func=_cmd_votes_export)
 
     one = commands.add_parser("capture-one", help="capture one site in this process")
     one.add_argument("--site-id", type=int, required=True)

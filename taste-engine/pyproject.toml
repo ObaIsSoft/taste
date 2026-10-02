@@ -14,6 +14,7 @@ dependencies = [
   "pillow>=10.4",
   "numpy>=1.26",
   "anthropic>=1.11,<2",
+  "supabase>=2.31,<3",
 ]
 
 [project.optional-dependencies]
@@ -44,7 +45,10 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "PTH"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["browser: needs installed Playwright browsers"]
+markers = [
+  "browser: needs installed Playwright browsers",
+  "postgres: needs local Postgres binaries (PG_BIN)",
+]
 
 [tool.vulture]
 paths = ["taste_engine"]
