@@ -1,4 +1,3 @@
-import json
 from types import SimpleNamespace
 
 from PIL import Image
@@ -28,13 +27,6 @@ def test_schema_has_no_place_for_a_verdict():
     fields = set(describe.SCHEMA["properties"])
     assert not fields & {"quality", "score", "rating", "taste", "verdict", "rationale"}
     assert set(describe.SCHEMA["required"]) == fields
-
-
-def test_chunks_respect_the_size_limit():
-    requests = [{"custom_id": str(i), "params": {"pad": "x" * 100}} for i in range(10)]
-    chunks = describe.chunk_requests(requests, max_bytes=400)
-    assert sum(len(c) for c in chunks) == 10
-    assert all(len(json.dumps(c)) <= 400 + 150 for c in chunks)
 
 
 def _result(stop_reason="end_turn", text='{"density": "sparse"}', kind="succeeded"):

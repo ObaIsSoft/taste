@@ -2,8 +2,8 @@
 
 The model reports what is visible, never a verdict: the schema has no field for
 quality, and nearly every answer comes from a fixed list, so the output is
-always valid JSON. Batches run at half the standard price. A capture whose
-request fails gets no description.json and is retried on the next run.
+always valid JSON. A capture whose request fails gets no description.json and
+is retried on the next run.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import base64
 import io
 import json
 import logging
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,14 +19,15 @@ from typing import Any
 import anthropic
 from PIL import Image
 
+from taste_engine import batches
 from taste_engine.capture import store
 from taste_engine.schemas import CaptureStatus
 from taste_engine.settings import ClaudeSettings, Settings
 
 log = logging.getLogger(__name__)
 
+JOB = "describe"
 DESCRIPTION_FILE = "description.json"
-OPEN_BATCHES_FILE = "describe_batches.json"
 
 SYSTEM_PROMPT = (
     "You describe website screenshots for a research dataset. Report only what is visible in "
@@ -148,22 +148,6 @@ def build_request(capture_id: str, hero: Path, cfg: ClaudeSettings) -> dict[str,
     }
 
 
-def chunk_requests(requests: list[dict[str, Any]], max_bytes: int) -> list[list[dict[str, Any]]]:
-    chunks: list[list[dict[str, Any]]] = []
-    current: list[dict[str, Any]] = []
-    size = 0
-    for request in requests:
-        request_size = len(json.dumps(request))
-        if current and size + request_size > max_bytes:
-            chunks.append(current)
-            current, size = [], 0
-        current.append(request)
-        size += request_size
-    if current:
-        chunks.append(current)
-    return chunks
-
-
 def pending_captures(settings: Settings, capture_ids: list[str] | None, force: bool) -> list[Path]:
     """Successful captures that passed QA and have no description yet."""
     chosen = []
@@ -180,24 +164,8 @@ def pending_captures(settings: Settings, capture_ids: list[str] | None, force: b
 
 def parse_result(result: Any) -> tuple[dict[str, Any] | None, str | None]:
     """Return (description, None) on success, or (None, reason) when it should be retried."""
-    if result.result.type != "succeeded":
-        return None, result.result.type
-    message = result.result.message
-    if message.stop_reason in ("refusal", "max_tokens"):
-        return None, message.stop_reason
-    text = next((block.text for block in message.content if block.type == "text"), None)
-    if text is None:
-        return None, "no text block"
-    return json.loads(text), None
-
-
-def _open_batches_path(settings: Settings) -> Path:
-    return settings.state_dir / OPEN_BATCHES_FILE
-
-
-def _load_open(settings: Settings) -> list[str]:
-    path = _open_batches_path(settings)
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    text, reason = batches.text_of(result)
+    return (json.loads(text), None) if text is not None else (None, reason)
 
 
 def submit(
@@ -206,47 +174,30 @@ def submit(
     capture_ids: list[str] | None = None,
     force: bool = False,
 ) -> list[str]:
-    directories = pending_captures(settings, capture_ids, force)
     requests = [
         build_request(d.name, d / store.read_record(d).stills[0].file, settings.claude)
-        for d in directories
+        for d in pending_captures(settings, capture_ids, force)
     ]
-    batch_ids = []
-    for chunk in chunk_requests(requests, settings.claude.batch_max_bytes):
-        batch = client.messages.batches.create(requests=chunk)
-        batch_ids.append(batch.id)
-        log.info("submitted batch %s with %d stills", batch.id, len(chunk))
-    store.write_json(_open_batches_path(settings), _load_open(settings) + batch_ids)
-    return batch_ids
+    return batches.submit(settings, client, JOB, requests)
 
 
 def collect(settings: Settings, client: anthropic.Anthropic, wait: bool = True) -> dict[str, int]:
     """Write description.json for every finished request. Returns counts by outcome."""
     counts = {"described": 0, "retry_later": 0}
-    still_open = []
-    for batch_id in _load_open(settings):
-        batch = client.messages.batches.retrieve(batch_id)
-        while wait and batch.processing_status != "ended":
-            time.sleep(settings.claude.batch_poll_s)
-            batch = client.messages.batches.retrieve(batch_id)
-        if batch.processing_status != "ended":
-            still_open.append(batch_id)
+    for batch_id, result in batches.collect(settings, client, JOB, wait):
+        description, reason = parse_result(result)
+        if description is None:
+            counts["retry_later"] += 1
+            log.warning("%s not described: %s", result.custom_id, reason)
             continue
-        for result in client.messages.batches.results(batch_id):
-            description, reason = parse_result(result)
-            if description is None:
-                counts["retry_later"] += 1
-                log.warning("%s not described: %s", result.custom_id, reason)
-                continue
-            store.write_json(
-                settings.capture_dir(result.custom_id) / DESCRIPTION_FILE,
-                {
-                    "model": result.result.message.model,
-                    "batch_id": batch_id,
-                    "described_at": datetime.now(UTC).isoformat(),
-                    "description": description,
-                },
-            )
-            counts["described"] += 1
-    store.write_json(_open_batches_path(settings), still_open)
+        store.write_json(
+            settings.capture_dir(result.custom_id) / DESCRIPTION_FILE,
+            {
+                "model": result.result.message.model,
+                "batch_id": batch_id,
+                "described_at": datetime.now(UTC).isoformat(),
+                "description": description,
+            },
+        )
+        counts["described"] += 1
     return counts
