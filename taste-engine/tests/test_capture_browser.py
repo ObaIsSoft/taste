@@ -35,10 +35,10 @@ def test_original_capture(fixture_site_url, fast_settings):
     assert metrics.uses_reduced_motion_query is True
     assert metrics.reduced_motion_respected is True
     assert metrics.dropped_frame_ratio is not None
+    assert metrics.inline_motion_mutations >= 1  # the preloader fades by inline style
 
     assert record.reel_seconds and record.reel_seconds > 3
     assert (folder / record.reel_file).stat().st_size > 0
-    assert (folder / record.poster_file).exists()
 
 
 def test_typography_twin_replaces_the_type(fixture_site_url, fast_settings):

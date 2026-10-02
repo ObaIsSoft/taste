@@ -28,7 +28,8 @@ def assess(
     return QualityFlags(
         blank_hero=hero_spread is not None and hero_spread < cfg.blank_std,
         bot_block=http_status in BLOCKED_STATUSES
-        or (short and any(p in text for p in cfg.bot_block_patterns)),
+        or any(p in heading for p in cfg.bot_block_patterns)
+        or (len(text) < cfg.bot_block_max_chars and any(p in text for p in cfg.bot_block_patterns)),
         not_found=http_status in GONE_STATUSES
         or any(p in heading for p in cfg.not_found_patterns)
         or (short and any(p in text for p in cfg.not_found_patterns)),

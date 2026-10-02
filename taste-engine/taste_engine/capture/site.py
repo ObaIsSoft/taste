@@ -23,7 +23,7 @@ from taste_engine.capture import degrade, js, store, visual
 from taste_engine.capture.browser import launch, new_context
 from taste_engine.capture.overlays import dismiss_overlays
 from taste_engine.capture.quality import assess
-from taste_engine.capture.reel import POSTER_FILE, REEL_FILE, Reel, record_reel
+from taste_engine.capture.reel import REEL_FILE, Reel, record_reel
 from taste_engine.schemas import (
     CaptureRecord,
     CaptureStatus,
@@ -179,8 +179,9 @@ def _analysis_visit(
             url, wait_until="domcontentloaded", timeout=_ms(cfg.navigation_timeout_s)
         )
         result.http_status = response.status if response else None
+        result.content_visible_ms = _wait_until_settled(page, cfg, started)  # the preloader wait
         _network_idle(page, cfg)
-        result.content_visible_ms = _wait_until_settled(page, cfg, started)
+        _wait_until_settled(page, cfg, time.monotonic())  # late content can still arrive
         result.running_animations = page.evaluate(js.RUNNING_ANIMATIONS)
         early_animations = page.evaluate(js.ANIMATIONS, cfg.max_animations)
 
@@ -327,7 +328,6 @@ def capture_site(entry: SiteEntry, variant: Variant, settings: Settings) -> Capt
         page_height=analysis.page_height,
         stills=analysis.stills,
         reel_file=REEL_FILE if reel_ok else None,
-        poster_file=POSTER_FILE if reel_ok else None,
         reel_seconds=reel.seconds if reel else None,
         overlay_actions=analysis.overlay_actions + (reel.actions if reel else []),
         libraries=libraries,

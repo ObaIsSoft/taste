@@ -35,7 +35,6 @@ class ReelSettings(BaseModel):
     fps: int = 30
     crf: int = 28
     preset: str = "veryfast"
-    poster_qscale: int = 3
 
 
 class CaptureSettings(BaseModel):
@@ -176,7 +175,8 @@ class CaptureSettings(BaseModel):
             "pagina non trovata",
         ]
     )
-    short_page_chars: int = 2500  # text pattern checks only apply to pages this short
+    short_page_chars: int = 2500  # not-found phrases only count on pages this short
+    bot_block_max_chars: int = 800  # block pages are near-empty; longer pages only match by title
 
     max_dom_elements: int = 4000
     max_animations: int = 300

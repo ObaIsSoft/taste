@@ -24,8 +24,7 @@ from taste_engine.settings import CaptureSettings
 
 log = logging.getLogger(__name__)
 
-REEL_FILE = "reel.mp4"
-POSTER_FILE = "poster.jpg"
+REEL_FILE = "reel.mp4"  # the voting UI uses the hero still as its poster
 
 
 @dataclass
@@ -128,26 +127,6 @@ def _duration(path: Path, cfg: CaptureSettings) -> float | None:
         return None
 
 
-def _poster(reel_path: Path, poster_path: Path, at_s: float, cfg: CaptureSettings) -> None:
-    _run(
-        [
-            cfg.ffmpeg,
-            "-y",
-            "-loglevel",
-            "error",
-            "-ss",
-            f"{at_s:.2f}",
-            "-i",
-            str(reel_path),
-            "-frames:v",
-            "1",
-            "-q:v",
-            str(cfg.reel.poster_qscale),
-            str(poster_path),
-        ]
-    )
-
-
 def record_reel(
     browser: Browser,
     url: str,
@@ -175,7 +154,4 @@ def record_reel(
         if raw is None or not raw.exists():
             return Reel(seconds=None, actions=actions)
         _transcode(raw, out_dir / REEL_FILE, cfg)
-    seconds = _duration(out_dir / REEL_FILE, cfg)
-    if seconds:
-        _poster(out_dir / REEL_FILE, out_dir / POSTER_FILE, min(cfg.reel.intro_s, seconds / 2), cfg)
-    return Reel(seconds=seconds, actions=actions)
+    return Reel(seconds=_duration(out_dir / REEL_FILE, cfg), actions=actions)

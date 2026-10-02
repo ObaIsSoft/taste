@@ -49,6 +49,15 @@ def test_each_problem_fails_qa(overrides, flag):
     assert not flags.passed
 
 
+def test_a_recaptcha_footer_is_not_a_bot_block():
+    footer = "Contact us. This form is protected by reCAPTCHA and the Privacy Policy applies. " * 20
+    assert _assess(text_sample=footer).passed
+
+
+def test_a_block_page_title_is_a_bot_block():
+    assert _assess(title="Access denied | example.com").bot_block
+
+
 def test_long_pages_are_not_flagged_by_words_in_their_copy():
     copy = "We help brands avoid the 404 of the soul. " * 200
     assert _assess(text_sample=copy).passed

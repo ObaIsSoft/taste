@@ -112,7 +112,7 @@ _INIT_TEMPLATE = r"""
         const v = r.target && r.target.getAttribute && r.target.getAttribute('style');
         if (v && (v.includes('transform') || v.includes('opacity'))) state.styleMutations += 1;
       }
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'], subtree: true });
+    }).observe(document, { attributes: true, attributeFilter: ['style'], subtree: true });  // <html> does not exist yet when init scripts run
   } catch (e) {}
 
   state.startFrames = () => {

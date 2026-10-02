@@ -113,7 +113,6 @@ class CaptureRecord(BaseModel):
     page_height: int | None = None
     stills: list[Still] = Field(default_factory=list)
     reel_file: str | None = None
-    poster_file: str | None = None
     reel_seconds: float | None = None
     overlay_actions: list[str] = Field(default_factory=list)
     libraries: dict[str, bool] = Field(default_factory=dict)
