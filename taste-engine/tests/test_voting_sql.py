@@ -154,6 +154,10 @@ def test_vote_rules_are_enforced_by_the_database(db):
     assert "unknown dimension" in db.error(
         f"select cast_vote('code-bo', '{pair['token']}', 'left', '{{smoothness}}', 'good reason!')"
     )
+    assert "at most 3 dimensions" in db.error(
+        f"select cast_vote('code-bo', '{pair['token']}', 'left', "
+        f"'{{whitespace,colour,layout,imagery}}', 'good reason!')"
+    )
     assert "at least 10 characters" in db.error(
         f"select cast_vote('code-bo', '{pair['token']}', 'right', '{{colour}}', 'meh')"
     )

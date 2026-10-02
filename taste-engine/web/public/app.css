@@ -1,0 +1,267 @@
+/* Mobile first: base styles are for phones; tablets and desktops add layout below. */
+
+:root {
+  --ink: #1c1917;
+  --muted: #57534e;
+  --line: #d6d3d1;
+  --paper: #fafaf9;
+  --card: #ffffff;
+  --chip: #f0efed;
+  --accent: #1d4ed8;
+  --accent-ink: #ffffff;
+  --danger: #b91c1c;
+  --radius: 10px;
+  --gap: 12px;
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f5f5f4;
+    --muted: #a8a29e;
+    --line: #44403c;
+    --paper: #1c1917;
+    --card: #292524;
+    --chip: #3a3532;
+    --accent: #93c5fd;
+    --accent-ink: #0c0a09;
+    --danger: #fca5a5;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+a { color: var(--accent); }
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px var(--gap);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  color: inherit;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+}
+
+.bar-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-size: 0.9rem;
+}
+
+.progress { color: var(--muted); }
+
+main {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+h1 { font-size: 1.4rem; line-height: 1.25; margin: 0 0 12px; }
+
+.panel { max-width: 560px; margin: 6vh auto; }
+
+.stack { display: grid; gap: 8px; }
+
+button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button:disabled { cursor: progress; opacity: 0.55; }
+
+button.link {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.message { min-height: 1.5em; margin: 8px 0 0; color: var(--danger); }
+.hint { color: var(--muted); font-weight: 400; }
+
+.round-choice { display: grid; gap: var(--gap); }
+
+.round {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  text-align: left;
+}
+
+.round span { color: var(--muted); font-size: 0.9rem; }
+
+.round-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Phones show one site at a time, switched with these tabs. */
+.side-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: var(--gap);
+}
+
+.side-switch [aria-selected="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.cards { display: grid; gap: var(--gap); }
+
+.card {
+  display: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.card.is-active { display: block; }
+
+.card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.card h2 { margin: 0; font-size: 1rem; }
+
+/* A site's screens stacked in their own scroll box, like the page itself. */
+.strip {
+  height: 55vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.strip img { display: block; width: 100%; height: auto; }
+
+.media video { display: block; width: 100%; height: auto; background: #000; }
+
+.decision {
+  position: sticky;
+  bottom: 0;
+  margin-top: var(--gap);
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.chips { margin: 0 0 8px; padding: 0; border: 0; }
+.chips legend { margin-bottom: 6px; padding: 0; font-weight: 600; }
+#chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+  border-radius: 999px;
+  background: var(--chip);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+#reason-block { margin-bottom: 8px; }
+
+.outcomes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+kbd { display: none; }
+
+.report { margin-top: 10px; color: var(--muted); }
+.report button { margin: 8px 8px 0 0; }
+
+.guide { max-width: 720px; }
+.guide h2 { margin: 28px 0 8px; font-size: 1.15rem; }
+.guide dt { margin-top: 10px; font-weight: 600; }
+.guide dd { margin: 2px 0 0; color: var(--muted); }
+.guide kbd { display: inline-block; padding: 0 6px; border: 1px solid currentColor; border-radius: 4px; }
+
+/* Tablets and up: both sites side by side. */
+@media (min-width: 768px) {
+  .side-switch { display: none; }
+  .cards { grid-template-columns: 1fr 1fr; }
+  .card { display: block; }
+  .outcomes { grid-template-columns: repeat(4, 1fr); }
+  .round-choice { grid-template-columns: 1fr 1fr; }
+  .strip { height: 60vh; }
+}
+
+/* Desktops: more room for the screens, and keyboard hints where there is a keyboard. */
+@media (min-width: 1200px) {
+  main { padding: 24px 32px; }
+  h1 { font-size: 1.6rem; }
+  .strip { height: 68vh; }
+}
+
+@media (min-width: 1200px) and (pointer: fine) {
+  kbd {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    opacity: 0.7;
+  }
+}

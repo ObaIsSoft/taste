@@ -22,6 +22,7 @@ create type vote_outcome as enum (
 create table voting_config (
   id boolean primary key default true check (id),
   min_reason_chars integer not null default 10 check (min_reason_chars > 0),
+  max_dimensions integer not null default 3 check (max_dimensions > 0),  -- chips per vote
   reason_every integer not null default 3 check (reason_every > 0),  -- ask for a reason on 1 in N
   repeat_count integer not null default 10 check (repeat_count >= 0),  -- swapped repeats per voter
   overlap_share numeric not null default 0.1 check (overlap_share between 0 and 1),
@@ -309,6 +310,9 @@ begin
   end if;
   if decisive and cardinality(dims) = 0 then
     raise exception 'pick at least one dimension that decided it' using errcode = '22023';
+  end if;
+  if cardinality(dims) > cfg.max_dimensions then
+    raise exception 'pick at most % dimensions', cfg.max_dimensions using errcode = '22023';
   end if;
   if decisive and pair.reason_requested
      and length(trim(coalesce(p_reason, ''))) < cfg.min_reason_chars then

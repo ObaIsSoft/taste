@@ -16,6 +16,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: ruff check taste_engine tests
+      - run: ruff check taste_engine tests web/api
       - run: vulture
       - run: pytest -q -m "not browser"

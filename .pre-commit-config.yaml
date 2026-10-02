@@ -3,7 +3,7 @@ repos:
     rev: v0.6.9
     hooks:
       - id: ruff
-        files: ^taste-engine/(taste_engine|tests)/
+        files: ^taste-engine/(taste_engine|tests|web/api)/
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
