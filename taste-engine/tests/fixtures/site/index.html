@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture Studio</title>
+<style>
+  body { margin: 0; font-family: Georgia, serif; color: #1d1d1b; background: #f4f1ea; }
+  header { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between;
+           padding: 24px 48px; z-index: 5; background: rgba(244, 241, 234, 0.9); }
+  nav a { margin-left: 24px; color: inherit; }
+  section { min-height: 900px; padding: 160px 48px 48px; box-sizing: border-box; }
+  section:nth-child(even) { background: #e3ddd0; }
+  h1 { font-size: 96px; letter-spacing: -2px; margin: 0 0 32px; }
+  .spinner { width: 80px; height: 80px; background: #c2410c; animation: spin 2s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  #preloader { position: fixed; inset: 0; background: #111; z-index: 50; transition: opacity 0.3s; }
+  #cookie-banner { position: fixed; bottom: 0; left: 0; right: 0; padding: 24px; background: #fff;
+                   border-top: 1px solid #ccc; z-index: 40; }
+  #menu { display: none; position: fixed; inset: 0; background: #1d1d1b; color: #fff; z-index: 30; padding: 120px 48px; }
+  #menu.open { display: block; }
+</style>
+</head>
+<body>
+<div id="preloader"></div>
+<header>
+  <strong>Fixture</strong>
+  <nav>
+    <a href="#work">Work</a><a href="#about">About</a><a href="#contact">Contact</a>
+    <button id="menu-button" aria-label="Open menu" aria-expanded="false">Menu</button>
+  </nav>
+</header>
+<div id="menu"><p>Menu panel</p></div>
+<main>
+  <section id="work">
+    <h1>We make calm things.</h1>
+    <div class="spinner box"></div>
+    <canvas id="gl" width="200" height="120"></canvas>
+  </section>
+  <section id="about"><h2>About</h2><p>A small studio for quiet interfaces and careful type.</p></section>
+  <section id="contact"><h2>Contact</h2><p>Write to us about slow, well-made websites.</p></section>
+  <section id="archive"><h2>Archive</h2><p>Ten years of projects, kept simple.</p></section>
+</main>
+<div id="cookie-banner" role="dialog" aria-label="Cookie consent">
+  <p>We use cookies to improve your experience.</p>
+  <button>Accept all</button>
+</div>
+<script>
+  setTimeout(() => {
+    const preloader = document.getElementById('preloader');
+    preloader.style.opacity = 0;
+    setTimeout(() => preloader.remove(), 350);
+  }, 1200);
+
+  const banner = document.getElementById('cookie-banner');
+  if (document.cookie.includes('consent=1')) banner.remove();
+  banner.querySelector('button').addEventListener('click', () => {
+    document.cookie = 'consent=1; path=/';
+    banner.remove();
+  });
+
+  const menuButton = document.getElementById('menu-button');
+  const menu = document.getElementById('menu');
+  menuButton.addEventListener('click', () => {
+    menuButton.setAttribute('aria-expanded', String(menu.classList.toggle('open')));
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      menu.classList.remove('open');
+      menuButton.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  document.getElementById('gl').getContext('webgl');
+
+  setTimeout(() => {
+    const timeline = () => ({ to() { return this; }, from() { return this; }, fromTo() { return this; }, set() { return this; } });
+    window.gsap = { to() { return {}; }, from() { return {}; }, fromTo() { return {}; }, set() { return {}; }, timeline };
+    gsap.to('.box', { duration: 1.2, ease: 'power3.out' });
+    gsap.timeline({ defaults: { ease: 'expo.inOut' } }).to('h1', { duration: 0.8, y: 0 });
+  }, 300);
+</script>
+</body>
+</html>

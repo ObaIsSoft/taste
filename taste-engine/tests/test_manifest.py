@@ -11,7 +11,10 @@ from taste_engine.schemas import Cohort
         ("HTTPS://Example.COM:443/About/", "https://example.com/About"),
         ("kortrijkxpo.com/en/", "https://kortrijkxpo.com/en"),
         ("https://demo.site/?password=demo/", "https://demo.site/?password=demo"),
-        ("https://thewoodetfils.com/propos#notre-monde/", "https://thewoodetfils.com/propos#notre-monde"),
+        (
+            "https://thewoodetfils.com/propos#notre-monde/",
+            "https://thewoodetfils.com/propos#notre-monde",
+        ),
         ("https://gchf.kr/index.html/", "https://gchf.kr/index.html"),
         ("http://example.com:8080/x", "http://example.com:8080/x"),
     ],

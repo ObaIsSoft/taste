@@ -10,6 +10,8 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
   "pydantic>=2.7,<3",
   "pydantic-settings>=2.3,<3",
+  "playwright==1.62.0",
+  "pillow>=10.4",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +34,11 @@ extend-exclude = ["scripts", "web", "data", "data_v1_archive", "results", "confi
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "PTH"]
+
+[tool.ruff.lint.per-file-ignores]
+# in-page JavaScript and CSS payloads keep their own line lengths
+"taste_engine/capture/js.py" = ["E501"]
+"taste_engine/capture/degrade.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
