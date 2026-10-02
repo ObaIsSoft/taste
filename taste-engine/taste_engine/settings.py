@@ -237,6 +237,7 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("SUPABASE_SERVICE_KEY", "SUPABASE_KEY")
     )
     storage_bucket: str = "captures"  # private: the voting API hands out signed URLs
+    voting_url: str | None = None  # the deployed voting site, for invite links
 
     @property
     def captures_dir(self) -> Path:

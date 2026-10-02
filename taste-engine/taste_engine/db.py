@@ -12,6 +12,7 @@ import secrets
 from itertools import combinations
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from supabase import Client, create_client
 from taste_engine import manifest
@@ -108,6 +109,11 @@ def add_voter(db: Client, name: str) -> str:
     code = secrets.token_urlsafe(9)
     db.table("voters").insert({"name": name, "invite_code": code}).execute()
     return code
+
+
+def invite_link(voting_url: str, code: str) -> str:
+    """A link that signs the voter in. The code is in the fragment, so no server ever logs it."""
+    return f"{voting_url.rstrip('/')}/#invite={quote(code, safe='')}"
 
 
 def calibration_rows(capture_ids: list[str], round_kind: str) -> list[dict[str, str]]:

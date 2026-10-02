@@ -92,3 +92,29 @@ def test_fourteen_sites_make_ninety_one_calibration_pairs():
     rows = db.calibration_rows(ids + ids[:2], "visual")
     assert len(rows) == 91
     assert all(row["capture_a"] < row["capture_b"] for row in rows)
+
+
+class _Voters:
+    def __init__(self):
+        self.rows = []
+
+    def table(self, _name):
+        return self
+
+    def insert(self, row):
+        self.rows.append(row)
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.rows)
+
+
+def test_each_voter_gets_a_fresh_code_and_a_link_that_keeps_it_out_of_server_logs():
+    voters = _Voters()
+    first, second = db.add_voter(voters, "Ada"), db.add_voter(voters, "Grace")
+    assert first != second and len(first) >= 12
+    assert voters.rows[0] == {"name": "Ada", "invite_code": first}
+
+    link = db.invite_link("https://votes.test/", first)
+    assert link == f"https://votes.test/#invite={first}"
+    assert db.invite_link("https://votes.test", "a/b c") == "https://votes.test/#invite=a%2Fb%20c"

@@ -2,33 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#ffffff">
 <title>Voter guide · TASTE</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header class="bar">
-  <a class="brand" href="/">TASTE</a>
-  <nav class="bar-links" aria-label="Guide"><a href="/">Back to voting</a></nav>
+<header class="topbar">
+  <div class="crumbs"><a class="wordmark" href="/">TASTE</a></div>
+  <div class="status"><a href="/">Back to voting</a></div>
 </header>
 
 <main class="guide">
   <h1>Voter guide</h1>
-  <p>Thank you for helping. Your votes teach a model what well-made web design looks like, so it can
-    help designers and steer AI tools away from generic results.</p>
+  <p class="lede">Thank you for helping. Your votes teach a model what well-made web design looks like,
+    so it can help designers and steer AI tools away from generic results.</p>
 
   <h2>How a session works</h2>
   <ol>
-    <li>Sign in with your invite code. It is your key, so keep it private.</li>
-    <li>Pick a round. The <strong>visual round</strong> shows the first screens of two sites: scroll
-      through each. The <strong>motion round</strong> shows a short recording of each site: play both.</li>
-    <li>Tap the one to three things that decided it, such as typography or pacing.</li>
-    <li>When asked, write one sentence about why. Not every vote asks.</li>
-    <li>Choose <em>Left is better</em>, <em>Right is better</em>, <em>Equally good</em> or
+    <li>Open your invite link. It signs you in, so keep it private. If you were given a code
+      instead, type it on the first screen.</li>
+    <li>Pick a round. The <strong>visual round</strong> shows the screens of two sites, A and B:
+      scroll through each. The <strong>motion round</strong> shows a short recording of each: play both.</li>
+    <li>Choose <em>A is better</em>, <em>B is better</em>, <em>Equally good</em> or
       <em>Can't decide</em>.</li>
+    <li>If you chose A or B, tap the one to three things that decided it, such as typography or pacing.
+      When asked, write one sentence about why. Not every vote asks.</li>
   </ol>
   <p>Sessions of 20 to 30 votes work best. Every vote is saved straight away, and a refresh shows the
-    same pair again.</p>
+    same pair again. On a phone, switch between the sites with the A and B tabs.</p>
 
   <h2>Judge craft, not preference</h2>
   <ul>
@@ -41,19 +44,20 @@
 
   <h2>What to look at</h2>
   <dl>
-    <dt>Whitespace</dt><dd>Is the empty space doing work, or just empty?</dd>
-    <dt>Typography</dt><dd>Is the hierarchy clear? Are scale, weight and spacing deliberate?</dd>
-    <dt>Colour</dt><dd>Is the palette disciplined and does it support the content?</dd>
-    <dt>Grid and layout</dt><dd>Is the structure consistent, and are breaks from it purposeful?</dd>
-    <dt>Texture and imagery</dt><dd>Is the imagery art-directed, or generic stock?</dd>
-    <dt>Overall cohesion</dt><dd>Do the choices add up to one statement?</dd>
-    <dt>Motion round</dt><dd>Smoothness, pacing, how long the intro makes you wait, how scrolling feels,
-      hover and click feedback, and the motion overall.</dd>
+    <div><dt>Whitespace</dt><dd>Is the empty space doing work, or just empty?</dd></div>
+    <div><dt>Typography</dt><dd>Is the hierarchy clear? Are scale, weight and spacing deliberate?</dd></div>
+    <div><dt>Colour</dt><dd>Is the palette disciplined and does it support the content?</dd></div>
+    <div><dt>Grid and layout</dt><dd>Is the structure consistent, and are breaks from it purposeful?</dd></div>
+    <div><dt>Texture and imagery</dt><dd>Is the imagery art-directed, or generic stock?</dd></div>
+    <div><dt>Overall cohesion</dt><dd>Do the choices add up to one statement?</dd></div>
+    <div><dt>Motion round</dt><dd>Smoothness, pacing, how long the intro makes you wait, how scrolling
+      feels, hover and click feedback, and the motion overall.</dd></div>
   </dl>
 
   <h2>Writing a reason</h2>
-  <p>Name a specific feature and what it does for the design. For example: <em>Left is better because
-    one large headline sits over quiet body text, which gives the page a clear starting point.</em></p>
+  <p>Name a specific feature and what it does for the design. For example:</p>
+  <p class="example"><em>A is better because one large headline sits over quiet body text, which gives
+    the page a clear starting point.</em></p>
   <p>Avoid feelings without evidence, such as "looks cleaner" or "better vibe". Only mention motion
     you actually saw.</p>
 
@@ -61,15 +65,18 @@
   <ul>
     <li><strong>Equally good</strong>: both are well made and you have no preference.</li>
     <li><strong>Can't decide</strong>: you cannot judge this pair. It does not count as a tie.</li>
-    <li><strong>Something looks broken</strong>: a blank page, an error, a cookie wall or the wrong
-      site. That capture is taken out for checking.</li>
+    <li><strong>Report</strong>, at the top of a site: it is blank, shows an error, a cookie wall or
+      the wrong site. That capture is taken out for checking.</li>
   </ul>
+
+  <h2>On a computer</h2>
+  <p><kbd>1</kbd> A is better, <kbd>2</kbd> B is better, <kbd>E</kbd> equally good,
+    <kbd>S</kbd> can't decide. Then <kbd>1</kbd> to <kbd>6</kbd> pick what decided it,
+    <kbd>↵</kbd> submits and <kbd>Esc</kbd> goes back.</p>
 
   <h2>Your data</h2>
   <p>We store your votes, the things you tapped, your reasons and timings with your voter name.
     Names are never shown publicly.</p>
-  <p>On a computer you can use the keyboard: <kbd>1</kbd> left, <kbd>2</kbd> right,
-    <kbd>E</kbd> equally good, <kbd>S</kbd> can't decide.</p>
 </main>
 </body>
 </html>

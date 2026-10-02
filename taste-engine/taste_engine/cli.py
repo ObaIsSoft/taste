@@ -133,8 +133,14 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
 
 
 def _cmd_voters_add(args: argparse.Namespace) -> int:
-    code = db.add_voter(db.connect(get_settings()), args.name)
-    print(f"{args.name}: invite code {code} (share it privately; it is their key)")
+    settings = get_settings()
+    code = db.add_voter(db.connect(settings), args.name)
+    print(f"{args.name}: invite code {code}")
+    if settings.voting_url:
+        print(f"invite link: {db.invite_link(settings.voting_url, code)}")
+    else:
+        print("set TASTE_VOTING_URL to also print an invite link that signs them in")
+    print("Share it privately: it is their key.")
     return 0
 
 
