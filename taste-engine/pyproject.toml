@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taste-engine"
+version = "2.0.0"
+description = "Learns design taste from designer votes on captured websites."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "pydantic>=2.7,<3",
+  "pydantic-settings>=2.3,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+  "vulture>=2.11",
+]
+
+[project.scripts]
+taste = "taste_engine.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["taste_engine*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["scripts", "web", "data", "data_v1_archive", "results", "config.py", "pipeline.py", "*.py.bak"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "PTH"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["browser: needs installed Playwright browsers"]
+
+[tool.vulture]
+paths = ["taste_engine"]
+min_confidence = 80

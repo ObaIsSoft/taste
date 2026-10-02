@@ -1,0 +1,28 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        files: ^taste-engine/(taste_engine|tests)/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=5000"]
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: no-secrets-or-bytecode
+        name: block .env files and Python bytecode
+        entry: bash -c 'echo "Do not commit $*"; exit 1' --
+        language: system
+        files: (^|/)\.env(\..+)?$|\.pyc$
+        exclude: \.env\.example$
+      - id: no-media
+        name: block media and model files (they belong in Supabase Storage)
+        entry: bash -c 'echo "Store these outside git: $*"; exit 1' --
+        language: system
+        files: \.(png|jpe?g|webp|webm|mp4|mov|gguf|pt|pth|safetensors|npy)$
+        exclude: ^taste-engine/tests/fixtures/
