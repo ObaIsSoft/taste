@@ -25,7 +25,7 @@ from taste_engine.settings import Settings
 log = logging.getLogger(__name__)
 
 CONTENT_TYPES = {".jpg": "image/jpeg", ".mp4": "video/mp4"}
-EXPORT_PAGE = 1000  # the REST API's default row limit per request
+PAGE_ROWS = 1000  # the REST API's default row limit per request
 
 
 def connect(settings: Settings) -> Client:
@@ -131,20 +131,21 @@ def create_calibration(db: Client, round_kind: str, capture_ids: list[str]) -> i
     return len(rows)
 
 
-def export_votes(db: Client, path: Path) -> int:
+def select_all(db: Client, table: str, order: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Every row of a table or view, a page at a time, in an order that keeps pages stable."""
     rows: list[dict[str, Any]] = []
     while True:
-        page = (
-            db.table("votes")
-            .select("*")
-            .order("id")
-            .range(len(rows), len(rows) + EXPORT_PAGE - 1)
-            .execute()
-            .data
-        )
+        query = db.table(table).select("*")
+        for column in order:
+            query = query.order(column)
+        page = query.range(len(rows), len(rows) + PAGE_ROWS - 1).execute().data
         rows.extend(page)
-        if len(page) < EXPORT_PAGE:
-            break
+        if len(page) < PAGE_ROWS:
+            return rows
+
+
+def export_votes(db: Client, path: Path) -> int:
+    rows = select_all(db, "votes", ("id",))
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")

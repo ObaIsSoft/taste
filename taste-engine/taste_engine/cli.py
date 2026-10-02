@@ -8,10 +8,10 @@ from pathlib import Path
 
 import anthropic
 
-from taste_engine import db, describe, manifest
+from taste_engine import agreement, db, describe, manifest
 from taste_engine.analysis import features
 from taste_engine.capture import runner, site
-from taste_engine.schemas import CaptureStatus, Cohort, Variant, capture_id
+from taste_engine.schemas import CaptureStatus, Cohort, Round, Variant, capture_id
 from taste_engine.settings import get_settings
 
 log = logging.getLogger("taste")
@@ -127,8 +127,10 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
     if not ids:
         log.error("pass --ids with the calibration sites")
         return 1
-    count = db.create_calibration(db.connect(settings), args.round, ids)
-    log.info("%s calibration set: %d pairs from %d captures", args.round, count, len(ids))
+    client = db.connect(settings)
+    for round_kind in list(Round) if args.round == "both" else [Round(args.round)]:
+        count = db.create_calibration(client, round_kind.value, ids)
+        log.info("%s calibration set: %d pairs from %d captures", round_kind, count, len(ids))
     return 0
 
 
@@ -141,6 +143,12 @@ def _cmd_voters_add(args: argparse.Namespace) -> int:
     else:
         print("set TASTE_VOTING_URL to also print an invite link that signs them in")
     print("Share it privately: it is their key.")
+    return 0
+
+
+def _cmd_votes_agreement(args: argparse.Namespace) -> int:
+    for line in agreement.summary(agreement.fetch(db.connect(get_settings()))):
+        print(line)
     return 0
 
 
@@ -204,7 +212,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     calibrate = commands.add_parser("calibrate", help="create a calibration set (all pairs)")
     _add_capture_selection(calibrate)
-    calibrate.add_argument("--round", choices=["visual", "motion"], required=True)
+    calibrate.add_argument(
+        "--round",
+        choices=[*(r.value for r in Round), "both"],
+        default="both",
+        help="both (the default) lets each voter's visual and motion verdicts be compared",
+    )
     calibrate.set_defaults(func=_cmd_calibrate)
 
     voters = commands.add_parser("voters", help="manage voters")
@@ -217,6 +230,10 @@ def build_parser() -> argparse.ArgumentParser:
     votes_sub = votes.add_subparsers(dest="action", required=True)
     export = votes_sub.add_parser("export", help="download every vote to data/votes")
     export.set_defaults(func=_cmd_votes_export)
+    agree = votes_sub.add_parser(
+        "agreement", help="how far voters agree with each other, themselves and across rounds"
+    )
+    agree.set_defaults(func=_cmd_votes_agreement)
 
     one = commands.add_parser("capture-one", help="capture one site in this process")
     one.add_argument("--site-id", type=int, required=True)

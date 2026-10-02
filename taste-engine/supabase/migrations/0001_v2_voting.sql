@@ -4,6 +4,7 @@
 -- The voting rules live here, in one place: who may vote on what (served-pair
 -- tokens), what a valid vote is (constraints and cast_vote), and which pair a
 -- voter sees next (next_pair). The API is a thin layer over these functions.
+-- Votes are stored exactly as cast; the agreement views line them up.
 
 begin;
 
@@ -148,6 +149,120 @@ alter table votes enable row level security;
 alter table vote_events enable row level security;
 -- No policies: only the server, using the service key, reads or writes these tables.
 
+-- Whether a capture may be shown in a round: in the pool, and with a reel for motion.
+create function servable(c captures, p_round round_kind) returns boolean
+language sql stable as $$
+  select c.in_pool and (p_round = 'visual' or c.reel_path is not null)
+$$;
+
+-- Calibration pairs that can be served now. A capture taken out of the pool, for example
+-- reported broken, leaves every voter's calibration set.
+create view open_calibration_pairs with (security_invoker = true) as
+select cp.*
+  from calibration_pairs cp
+  join captures ca on ca.id = cp.capture_a
+  join captures cb on cb.id = cp.capture_b
+ where servable(ca, cp.round) and servable(cb, cp.round);
+
+-- Agreement. A verdict says which capture of a pair is better, whatever side each was shown
+-- on: 'low' or 'high' (pair_low or pair_high), 'tie' (equally good), 'unsure' (can't decide)
+-- or 'broken'.
+create view vote_verdicts with (security_invoker = true) as
+select v.id, v.voter_id, v.round, v.pair_low, v.pair_high, s.source,
+       case
+         when v.outcome in ('left', 'right') then
+           case when (v.outcome = 'left') = (v.left_capture = v.pair_low) then 'low' else 'high' end
+         when v.outcome = 'equally_good' then 'tie'
+         when v.outcome = 'cant_decide' then 'unsure'
+         else 'broken'
+       end as verdict,
+       v.dimensions, v.reason, v.created_at
+  from votes v
+  join served_pairs s on s.token = v.token;
+
+-- A voter's first verdict on a pair is their judgment of it. A later one is a repeat, which
+-- measures their consistency instead.
+create view first_verdicts with (security_invoker = true) as
+select distinct on (voter_id, round, pair_low, pair_high) *
+  from vote_verdicts
+ order by voter_id, round, pair_low, pair_high, created_at, id;
+
+-- How the panel split on each pair. agreement is the share of judging voters who gave the
+-- most common verdict; split means some voters preferred each capture.
+create view pair_agreement with (security_invoker = true) as
+select round, pair_low, pair_high,
+       count(*) filter (where verdict <> 'unsure') as judged,
+       count(*) filter (where verdict = 'low') as low_better,
+       count(*) filter (where verdict = 'high') as high_better,
+       count(*) filter (where verdict = 'tie') as equally_good,
+       count(*) filter (where verdict = 'unsure') as cant_decide,
+       round(greatest(count(*) filter (where verdict = 'low'),
+                      count(*) filter (where verdict = 'high'),
+                      count(*) filter (where verdict = 'tie'))::numeric
+             / nullif(count(*) filter (where verdict <> 'unsure'), 0), 3) as agreement,
+       count(*) filter (where verdict = 'low') > 0
+         and count(*) filter (where verdict = 'high') > 0 as split
+  from first_verdicts
+ where verdict <> 'broken'
+ group by round, pair_low, pair_high;
+
+-- Each voter's consistency on the pairs they judged more than once (the swapped repeats).
+-- flipped means they preferred each capture at different times.
+create view voter_consistency with (security_invoker = true) as
+with repeated as (
+  select voter_id, round, pair_low, pair_high,
+         count(distinct verdict) = 1 as same,
+         count(distinct verdict) filter (where verdict in ('low', 'high')) = 2 as flipped
+    from vote_verdicts
+   where verdict in ('low', 'high', 'tie')
+   group by voter_id, round, pair_low, pair_high
+  having count(*) > 1
+)
+select r.round, r.voter_id, vt.name as voter,
+       count(*) as repeated_pairs,
+       count(*) filter (where r.same) as same_verdict,
+       count(*) filter (where r.flipped) as flipped,
+       round(avg(r.same::int), 3) as consistency
+  from repeated r
+  join voters vt on vt.id = r.voter_id
+ group by r.round, r.voter_id, vt.name;
+
+-- How often two voters gave the same verdict on the pairs both judged. opposite means each
+-- preferred a different capture.
+create view voter_agreement with (security_invoker = true) as
+select x.round, x.voter_id as voter_a_id, va.name as voter_a,
+       y.voter_id as voter_b_id, vb.name as voter_b,
+       count(*) as shared_pairs,
+       count(*) filter (where x.verdict = y.verdict) as same_verdict,
+       count(*) filter (where x.verdict <> y.verdict and 'tie' not in (x.verdict, y.verdict))
+         as opposite,
+       round(avg((x.verdict = y.verdict)::int), 3) as agreement
+  from first_verdicts x
+  join first_verdicts y
+    on y.round = x.round and y.pair_low = x.pair_low and y.pair_high = x.pair_high
+   and y.voter_id > x.voter_id
+  join voters va on va.id = x.voter_id
+  join voters vb on vb.id = y.voter_id
+ where x.verdict in ('low', 'high', 'tie') and y.verdict in ('low', 'high', 'tie')
+ group by x.round, x.voter_id, va.name, y.voter_id, vb.name;
+
+-- One voter's visual and motion verdicts on the same pair. A difference is information, not
+-- an error: a site can look better and move worse. Each round's dimensions and reasons say why.
+create view round_differences with (security_invoker = true) as
+select v.voter_id, vt.name as voter, v.pair_low, v.pair_high,
+       v.verdict as visual, m.verdict as motion,
+       v.verdict <> m.verdict as differs,
+       v.verdict <> m.verdict and 'tie' not in (v.verdict, m.verdict) as opposite,
+       v.dimensions as visual_dimensions, m.dimensions as motion_dimensions,
+       v.reason as visual_reason, m.reason as motion_reason
+  from first_verdicts v
+  join first_verdicts m
+    on m.voter_id = v.voter_id and m.round = 'motion'
+   and m.pair_low = v.pair_low and m.pair_high = v.pair_high
+  join voters vt on vt.id = v.voter_id
+ where v.round = 'visual'
+   and v.verdict in ('low', 'high', 'tie') and m.verdict in ('low', 'high', 'tie');
+
 create function voter_for(p_code text) returns voters
 language plpgsql stable as $$
 declare
@@ -171,6 +286,8 @@ declare
   src text;
   first_left text;
   flip boolean;
+  contested boolean;
+  asked_in_other_round boolean;
   result served_pairs;
 begin
   select * into cfg from voting_config;
@@ -187,7 +304,7 @@ begin
 
   -- 1. Calibration: every voter judges every calibration pair once, in their own order.
   select cp.capture_a, cp.capture_b into a, b
-    from calibration_pairs cp
+    from open_calibration_pairs cp
    where cp.round = p_round
      and not exists (
        select 1 from votes v
@@ -205,7 +322,7 @@ begin
         where v.voter_id = voter.id and v.round = p_round and s.source = 'repeat'
      ) < cfg.repeat_count then
     select cp.capture_a, cp.capture_b into a, b
-      from calibration_pairs cp
+      from open_calibration_pairs cp
      where cp.round = p_round
        and (select count(*) from votes v
              where v.voter_id = voter.id and v.round = p_round
@@ -221,8 +338,11 @@ begin
   if src is null and random() < cfg.overlap_share then
     select v.pair_low, v.pair_high into a, b
       from votes v
+      join captures cl on cl.id = v.pair_low
+      join captures ch on ch.id = v.pair_high
      where v.round = p_round and v.voter_id <> voter.id
        and v.outcome in ('left', 'right', 'equally_good')
+       and servable(cl, p_round) and servable(ch, p_round)
        and not exists (
          select 1 from votes mine
           where mine.voter_id = voter.id and mine.round = p_round
@@ -239,14 +359,14 @@ begin
   if src is null then
     select c.id into a
       from captures c
-     where c.in_pool and (p_round = 'visual' or c.reel_path is not null)
+     where servable(c, p_round)
      order by (select count(*) from votes v
                 where v.round = p_round and (v.left_capture = c.id or v.right_capture = c.id)),
               random()
      limit 1;
     select c.id into b
       from captures c
-     where c.in_pool and c.id <> a and (p_round = 'visual' or c.reel_path is not null)
+     where servable(c, p_round) and c.id <> a
        and not exists (
          select 1 from votes v
           where v.voter_id = voter.id and v.round = p_round
@@ -269,6 +389,23 @@ begin
     flip := random() < 0.5;
   end if;
 
+  -- A reason is asked on 1 in reason_every pairs at random, and wherever it can explain a
+  -- difference: always on a pair other voters split on, and on a pair this voter judged in
+  -- the other round exactly when it was asked there, so the two rounds' reasons pair up.
+  -- The voter is never told why, so nothing hints at how anyone voted.
+  contested := (
+    select count(distinct f.verdict) = 2
+      from first_verdicts f
+     where f.round = p_round and f.pair_low = least(a, b) and f.pair_high = greatest(a, b)
+       and f.voter_id <> voter.id and f.verdict in ('low', 'high'));
+  select s.reason_requested into asked_in_other_round
+    from votes v
+    join served_pairs s on s.token = v.token
+   where v.voter_id = voter.id and v.round <> p_round
+     and v.pair_low = least(a, b) and v.pair_high = greatest(a, b)
+   order by v.created_at
+   limit 1;
+
   insert into served_pairs (voter_id, round, left_capture, right_capture, source, reason_requested)
   values (
     voter.id,
@@ -276,7 +413,7 @@ begin
     case when flip then b else a end,
     case when flip then a else b end,
     src,
-    random() < 1.0 / cfg.reason_every
+    contested or coalesce(asked_in_other_round, random() < 1.0 / cfg.reason_every)
   )
   returning * into result;
   return result;
@@ -358,12 +495,12 @@ declare
 begin
   return query
   select r.kind,
-         (select count(*) from calibration_pairs cp
+         (select count(*) from open_calibration_pairs cp
            where cp.round = r.kind and exists (
              select 1 from votes v
               where v.voter_id = voter.id and v.round = r.kind
                 and v.pair_low = cp.capture_a and v.pair_high = cp.capture_b)),
-         (select count(*) from calibration_pairs cp where cp.round = r.kind),
+         (select count(*) from open_calibration_pairs cp where cp.round = r.kind),
          (select count(*) from votes v where v.voter_id = voter.id and v.round = r.kind)
     from unnest(enum_range(null::round_kind)) as r (kind);
 end;

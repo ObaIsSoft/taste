@@ -41,6 +41,13 @@ def capture_id(site_id: int, variant: Variant) -> str:
     return f"{site_id:04d}-{variant.value}"
 
 
+class Round(StrEnum):
+    """A voting round, as in the database's round_kind."""
+
+    VISUAL = "visual"
+    MOTION = "motion"
+
+
 class CaptureStatus(StrEnum):
     OK = "ok"
     FAILED = "failed"

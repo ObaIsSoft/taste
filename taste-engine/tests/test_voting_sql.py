@@ -183,4 +183,117 @@ def test_motion_rounds_use_motion_dimensions(db):
 
 def test_browsers_cannot_touch_the_tables(db):
     assert "42501" in db.error("set role anon; select * from votes")
+    assert "42501" in db.error("set role anon; select * from voter_agreement")
     assert "42501" in db.error("set role anon; select * from next_pair('code-ada', 'visual')")
+
+
+def _add_sites_and_voters(db):
+    db.run(
+        """
+        insert into sites (id, url, cohort)
+        select i, format('https://%s.test/', i), 'award' from generate_series(5, 8) i
+        on conflict do nothing;
+        insert into captures (id, site_id, variant, capture_version, qa_passed, stills,
+                              reel_path, in_pool)
+        select format('%s-original', lpad(i::text, 4, '0')), i, 'original', '2.0.0', true,
+               array[format('%s-original/screen-1.jpg', lpad(i::text, 4, '0'))],
+               format('%s-original/reel.mp4', lpad(i::text, 4, '0')), true
+          from generate_series(5, 8) i
+        on conflict do nothing;
+        insert into voters (name, invite_code)
+        values ('Cy', 'code-cy'), ('Di', 'code-di'), ('Ed', 'code-ed')
+        on conflict do nothing;
+        """
+    )
+
+
+def _serve(db, code, left, right, round_kind="visual"):
+    """Serve a chosen pair, as next_pair would, so a test can script who saw what."""
+    [[token]] = db.run(
+        f"with s as (insert into served_pairs (voter_id, round, left_capture, right_capture, "
+        f"source, reason_requested) select id, '{round_kind}', '{left}', '{right}', "
+        f"'adaptive', false from voters where invite_code = '{code}' returning token) "
+        f"select token from s"
+    )
+    return {"token": token, "left": left, "right": right}
+
+
+def _c(number):
+    return f"{number:04d}-original"
+
+
+def test_agreement_views_line_up_votes_whatever_side_sites_were_on(db):
+    _add_sites_and_voters(db)
+    p, q = (_c(5), _c(6)), (_c(7), _c(8))
+    # Cy prefers 5 over 6 twice (sides swapped the second time), and flips on 7 vs 8.
+    _vote(db, _serve(db, "code-cy", p[0], p[1]), "left", code="code-cy")
+    _vote(db, _serve(db, "code-cy", p[1], p[0]), "right", code="code-cy")
+    _vote(db, _serve(db, "code-cy", q[0], q[1]), "right", code="code-cy")
+    _vote(db, _serve(db, "code-cy", q[1], q[0]), "right", code="code-cy")
+    # Di disagrees with Cy on 5 vs 6, and agrees on 7 vs 8.
+    _vote(db, _serve(db, "code-di", p[1], p[0]), "left", code="code-di")
+    _vote(db, _serve(db, "code-di", q[0], q[1]), "right", code="code-di")
+    # In the motion round Cy prefers 6, and finds 7 and 8 equally good.
+    motion = {"dims": "{smoothness}", "code": "code-cy"}
+    _vote(db, _serve(db, "code-cy", p[0], p[1], "motion"), "right", **motion)
+    _vote(db, _serve(db, "code-cy", q[1], q[0], "motion"), "equally_good", **motion)
+
+    assert db.run(
+        "select repeated_pairs, same_verdict, flipped, consistency from voter_consistency "
+        "where voter = 'Cy' and round = 'visual'"
+    ) == [["2", "1", "1", "0.500"]]
+    assert db.run(
+        "select shared_pairs, same_verdict, opposite, agreement from voter_agreement "
+        "where round = 'visual' and 'Cy' in (voter_a, voter_b) and 'Di' in (voter_a, voter_b)"
+    ) == [["2", "1", "1", "0.500"]]
+    assert db.run(
+        f"select pair_low, judged, low_better, high_better, split, agreement "
+        f"from pair_agreement where round = 'visual' and pair_low in ('{p[0]}', '{q[0]}') "
+        f"order by pair_low"
+    ) == [[p[0], "2", "1", "1", "t", "0.500"], [q[0], "2", "0", "2", "f", "1.000"]]
+    assert db.run(
+        "select pair_low, visual, motion, differs, opposite, visual_dimensions, "
+        "motion_dimensions from round_differences where voter = 'Cy' order by pair_low"
+    ) == [
+        [p[0], "low", "high", "t", "t", "{whitespace}", "{smoothness}"],
+        [q[0], "high", "tie", "t", "f", "{whitespace}", "{smoothness}"],
+    ]
+
+
+def test_reasons_are_asked_where_they_explain_a_difference(db):
+    _add_sites_and_voters(db)
+    contested = (_c(5), _c(6))  # Cy and Di split on it in the test above
+    db.run(
+        f"""
+        update voting_config set reason_every = 1000000;  -- no reasons at random
+        insert into calibration_pairs (round, capture_a, capture_b) values
+          ('visual', '{contested[0]}', '{contested[1]}'),
+          ('motion', '{_c(1)}', '{_c(2)}'), ('motion', '{contested[0]}', '{contested[1]}');
+        update captures set in_pool = false where id = '{_c(3)}';  -- reported broken
+        """
+    )
+    try:
+        asked = {}
+        for _ in range(2):
+            pair = _next(db, code="code-ed")
+            assert pair["source"] == "calibration"
+            asked[frozenset((pair["left"], pair["right"]))] = pair["reason"]
+            _vote(db, pair, code="code-ed")
+        # Pairs with the pulled capture are skipped; the split pair asks for a reason.
+        assert asked == {frozenset((_c(1), _c(2))): "f", frozenset(contested): "t"}
+        assert db.run(
+            "select calibration_done, calibration_total from voter_progress('code-ed') "
+            "where round = 'visual'"
+        ) == [["2", "2"]]
+
+        # In the motion round Ed is asked exactly where the visual round asked.
+        for _ in range(2):
+            pair = _next(db, code="code-ed", round_kind="motion")
+            assert pair["source"] == "calibration"
+            assert pair["reason"] == asked[frozenset((pair["left"], pair["right"]))]
+            _vote(db, pair, dims="{pacing}", code="code-ed")
+    finally:
+        db.run(
+            f"update voting_config set reason_every = 1; "
+            f"update captures set in_pool = true where id = '{_c(3)}'"
+        )
