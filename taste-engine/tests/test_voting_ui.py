@@ -21,6 +21,7 @@ from werkzeug.serving import make_server
 pytestmark = pytest.mark.browser
 
 API_PATH = Path(__file__).parent.parent / "web" / "api" / "index.py"
+SIDE_IDS = ("left", "right")
 VISUAL = ["whitespace", "typography", "colour", "layout", "imagery", "cohesion"]
 
 
@@ -91,12 +92,12 @@ def _wait_for_votes(page, fake, count):
     raise AssertionError(f"expected {count} votes, got {len(fake.votes())}")
 
 
-def _start_visual_round(page, url, width=1440, height=900):
+def _open_round(page, url, round_name="Visual round", width=1440, height=900):
     page.set_viewport_size({"width": width, "height": height})
     page.add_init_script("localStorage.setItem('taste.inviteCode', 'code-ada')")
     page.goto(url)
-    page.get_by_role("button", name="Visual round").click()
-    expect(page.get_by_role("img", name="Site A, screen 1")).to_be_visible()
+    page.get_by_role("button", name=round_name).click()
+    expect(page.locator("#card-left .media > *")).to_be_visible()
 
 
 def test_sign_in_and_vote(site):
@@ -145,7 +146,7 @@ def test_keyboard_voting(site):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        _start_visual_round(page, url)
+        _open_round(page, url)
 
         page.keyboard.press("2")
         expect(page.get_by_text("What made B better?")).to_be_visible()
@@ -171,7 +172,7 @@ def test_reporting_a_broken_capture_asks_first(site):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        _start_visual_round(page, url)
+        _open_round(page, url)
 
         page.once("dialog", lambda dialog: dialog.dismiss())
         page.locator("#card-left").get_by_role("button", name="Report").click()
@@ -206,7 +207,7 @@ def test_layout_at_each_screen_size(site, width, height, both_visible):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        _start_visual_round(page, url, width, height)
+        _open_round(page, url, width=width, height=height)
 
         assert page.locator("#card-left").is_visible()
         assert page.locator("#card-right").is_visible() is both_visible
@@ -226,4 +227,32 @@ def test_layout_at_each_screen_size(site, width, height, both_visible):
             page.screenshot(path=str(Path(shots) / f"voting-{width}.png"))
             page.get_by_role("button", name="A is better").click()
             page.screenshot(path=str(Path(shots) / f"voting-{width}-explain.png"))
+        browser.close()
+
+
+@pytest.mark.parametrize(
+    ("round_name", "both_visible"), [("Motion round", True), ("Visual round", False)]
+)
+def test_phones_stack_recordings_but_tab_between_screens(site, round_name, both_visible):
+    url, fake = site
+    fake.images["0001-original/reel.mp4"] = "data:video/mp4;base64,AAAA"
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        _open_round(page, url, round_name, 390, 844)
+
+        assert page.locator("#card-right").is_visible() is both_visible
+        assert page.locator(".side-switch").is_visible() is not both_visible
+        if both_visible:
+            expect(page.locator("#card-left video")).to_be_visible()
+            left, right = (page.locator(f"#card-{s}").bounding_box() for s in SIDE_IDS)
+            assert left["y"] + left["height"] <= right["y"]  # A above B
+            assert left["width"] == right["width"] > 340  # each as wide as the screen allows
+        decision = page.locator("#vote-form").bounding_box()
+        assert decision["y"] + decision["height"] <= 844 + 1
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+        shots = os.environ.get("TASTE_UI_SHOTS")
+        if shots:
+            page.screenshot(path=str(Path(shots) / f"phone-{round_name.split()[0].lower()}.png"))
         browser.close()

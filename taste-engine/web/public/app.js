@@ -276,6 +276,7 @@ function report(outcome) {
 
 function startRound(round) {
   state.round = round;
+  $('#voting').dataset.round = round;
   $('#round-name').textContent = round === 'visual' ? 'Visual round' : 'Motion round';
   renderChips();
   show('voting');
