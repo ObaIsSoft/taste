@@ -507,3 +507,228 @@ We successfully executed the 14-token Overfit Sandbox test on the MPS architectu
 With the 14-token V2 architecture mathematically proven, we are finally ready to exit the sandbox. 
 
 The immediate next step is to trigger the batch scraper on the remaining **1,000 URLs**, run the OpenCV structural telemetry, run the VLM Structured Forensic Extraction to get the 3 contextual scalars, and aggregate the **10,000 Elo votes** required to train this micro-brain into an absolute aesthetic judge.
+
+---
+
+## September 28th Update: The MDPD Pivot — From Scalar Taste to Dimensional Taste
+
+### 1. The Fundamental Diagnosis
+
+The 461-pair pilot produced 49% accuracy — a coin flip. The diagnosis was overfitting, but the root cause is deeper: **DPO assumes taste is a scalar preference relation (A > B > C). Taste is not scalar. It is a high-dimensional vector field.**
+
+When A beats B on whitespace, B beats C on typography, and C beats A on color discipline, DPO's gradients collide and cancel out. The model sees A > B and learns "whitespace good." Then it sees B > A in another pair and learns "whitespace irrelevant." The loss surface becomes a wash. **DPO cannot learn cyclic preferences. Neither can TrueSkill. Neither can Elo. They are all built on the axiom of transitivity, and taste violates it by design.**
+
+The 49% accuracy was not a failure — it was the mathematically optimal response to self-contradictory scalar signals. The model was doing exactly what it was designed to do: giving up and guessing.
+
+### 2. The Epistemological Fix
+
+Taste is not:
+- A scalar score (Elo/TrueSkill μ)
+- A binary preference (DPO chosen/rejected)
+- A ranking (A > B > C)
+
+Taste **is** a **context-dependent, multi-dimensional preference relation** over design artifacts. Formally:
+
+```
+Taste(design) ∈ ℝⁿ  where n ≥ 7
+```
+
+Each dimension is a latent aesthetic axis that humans can perceive but not always name. A "good" design is not one that maximizes all dimensions — it is one that achieves **coherent tension**: deliberate trade-offs between dimensions that create a unified aesthetic statement.
+
+### 3. The New Architecture: Multi-Dimensional Preference Decomposition (MDPD)
+
+**Stop trying to predict "who wins." Start trying to predict how much each dimension contributes to the preference in each specific comparison.**
+
+The architecture:
+- **Shared encoder:** processes both designs' metrics simultaneously
+- **N heads (one per dimension):** each head predicts which design wins on its dimension
+- **Aggregator:** learns how to weight dimensions based on design category and voter profile
+- **Sparse masking:** only the dimensions cited in the voter's reasoning get a gradient
+
+The voter's reasoning text becomes a **binary mask** over the heads. If the voter says "A won because of whitespace," the whitespace head gets a strong gradient. All other heads get zero gradient for this pair. The model never receives contradictory scalar signals — it receives sparse, dimensional signals that are mutually compatible.
+
+### 4. The Data Protocol Changes
+
+**What's collected:**
+- Voter ID (who is voting)
+- Winner (A or B)
+- Reasoning (free-text, required, min 10 characters)
+- Confidence (implicit in reasoning quality)
+
+**What's NOT collected:**
+- VLM rationales (confabulated — replaced by voter reasoning)
+- Video recordings (expensive — replaced by 2 screenshots)
+- Keyframes (only used for VLM rationale — no longer needed)
+- taste_rationale.json (VLM confabulation — replaced by voter reasoning)
+
+**The reasoning box is the key innovation.** It turns the voter into a dimensional probe. When a voter says "A beat B because of whitespace" and "C beat A because of color discipline," they're telling us which dimension decided each comparison. We don't need structured ratings to get the dimensional decomposition — we extract it from the reasoning text.
+
+### 5. The Training Protocol
+
+**Phase 1: Dimensional Decomposition (Week 1)**
+- Run the multi-voter pilot with the new protocol
+- Extract cited dimensions from reasoning (keyword + LLM classifier)
+- Run factor analysis on vote patterns → discover actual latent dimensions
+- **Output:** the real dimensions, not the assumed 7
+
+**Phase 2: Train Dimension Heads Independently (Week 2)**
+- Train each head on only the votes that cite its dimension
+- Sparse head activation prevents gradient interference
+- **Output:** N independent dimensional scorers
+
+**Phase 3: Train the Aggregator (Week 3)**
+- Freeze the heads
+- Train only the aggregator to learn contextual weights
+- Input: head outputs + design category + voter profile
+- **Output:** a model that predicts final preference from dimensional scores
+
+**Phase 4: The Residual Vision Model (Week 4+)**
+- Train on the residual: `actual_vote − MDPD_prediction`
+- The vision model learns what the metrics can't explain
+- **Output:** a taste correction model
+
+### 6. What Was Built Today
+
+| Component | Status | File |
+|---|---|---|
+| Voter guide (HTML) | Done | `web/public/guide.html` |
+| Voter ID modal | Done | `web/public/index.html` |
+| Reasoning modal | Done | `web/public/index.html` |
+| Supabase schema (voter_id, reasoning, voters table) | Done | `supabase_schema.sql` |
+| API (/api/vote with voter_id + reasoning, /api/voter_stats) | Done | `web/api/index.py` |
+| Leaderboard (voter consensus section) | Done | `web/public/leaderboard.html` |
+| Design doc (MDPD architecture, task list, deletion log) | Done | `TASTE_ENGINE_V2_DESIGN.md` |
+
+### 7. What Needs to Be Deleted
+
+| Data | Why |
+|---|---|
+| `taste_rationale.json` (100 files) | VLM-confabulated rationales — replaced by voter reasoning |
+| `motion_storyboard.json` (100 files) | Only needed for keyframe extraction |
+| `frames/` directories (100 folders) | Video-derived keyframes — no longer used |
+| `page@*.webm` (100 files) | Video recordings — no longer used |
+| `embedding.json` (100 files) | From VLM rationales — regenerate from voter reasoning |
+
+| Code | Why |
+|---|---|
+| `scripts/preprocess_video.py` | Video keyframe extraction — no longer needed |
+| `scripts/motion_capture.py` | Already deprecated |
+| `scripts/vision_llm.py` | VLM rationale generation — VLM is now feature-only |
+| `scripts/enrich.py` | Remove taste_rationale.json; keep stage2_vlm_raw.json as feature |
+| `scripts/extract_taste.py` | "Rules of Taste" — VLM-confabulated |
+| `scripts/compile_dpo_dataset.py` | Replaced by `dpo_from_votes.py` |
+
+### 8. Hopeful Gains
+
+1. **The 49% accuracy problem is solved by construction.** Dimensional decomposition eliminates the gradient cancellation that caused the model to guess. Each head learns a clean, transitive sub-problem.
+
+2. **The labels are now human-grounded.** Voter reasoning is real causal explanation, not VLM confabulation. The model learns to cite features because humans cited features.
+
+3. **The pipeline is 10x cheaper.** No video, no keyframes, no VLM rationale generation per site. Just 2 screenshots + DOM metadata + motion code.
+
+4. **The residual is now measurable.** We can quantify exactly how much of taste is measurable (metrics) vs immeasurable (vision). This tells us where to invest next.
+
+5. **The voter reasoning is a dimensional probe.** We get the dimensional decomposition for free from free-text reasoning — no structured ratings needed.
+
+### 9. Risks
+
+| Risk | Likelihood | Mitigation |
+|---|---|---|
+| Voters disagree (κ < 0.4) | Medium | Refine criteria, add examples, more voter training |
+| Voter fatigue / dropout | Medium | Keep reasoning short, show progress stats, gamify |
+| Anti-bot blocks scaling | High | `playwright-stealth`, residential proxies, rate limiting |
+| Dimensions don't emerge cleanly | Medium | Fall back to the 7 hypothesized dimensions |
+| Keyword extraction misses reasoning | Medium | Use LLM classifier with confidence threshold |
+| Residual rate too high (> 50%) | Medium | Add finer-grained metrics, accept that taste is partly immeasurable |
+| MDPD doesn't improve over single-stage | Medium | The residual is real by definition; the question is whether it's learnable from visuals |
+
+### 10. Dependencies
+
+| Task | Depends On |
+|---|---|
+| Voter pilot (recruit 3 designers) | Frontend done ✅ |
+| Dimension discovery (factor analysis) | Voter pilot data |
+| Dimension extractor (reasoning → dimensions) | Voter pilot data |
+| MDPD nano-transformer | Dimension discovery |
+| Residual vision model | MDPD model trained |
+| 900-site scrape | Scraper fixes |
+| Full 10k vote collection | Voter pilot validated |
+
+### 11. Low-Hanging Fruit
+
+1. **Delete old data** — `taste_rationale.json`, `frames/`, `.webm` from `data_v1_archive/`. Frees space, reduces confusion. Independent of everything else.
+
+2. **Fix the scraper** — GSAP async loading, click-through robustness, full-page screenshot. Independent of the voter pilot. Can be done while recruiting voters.
+
+3. **Fix the metrics** — DOM-based asymmetry, quadrant distribution. Independent of the voter pilot. Can be done in parallel.
+
+4. **Build the dimension extractor** — keyword + LLM classifier that maps reasoning → dimensions. Can be built and tested on the existing 461 pairs (which have VLM rationales that can serve as weak labels for training the classifier).
+
+### 12. Future Changes (Post-Pilot)
+
+1. **Calibration phase** — 20 forced-choice questions per voter to build voter profiles (dimensional weights per voter)
+
+2. **Triplet voting** — A vs B vs C, pick the outlier. More informative per vote, but more cognitively demanding. Use for calibration, not main voting.
+
+3. **Dimension-aware matchmaking** — match sites that differ on only 1 dimension (isolates the variable). Current cosine-similarity matching is the right instinct but needs to be dimension-aware.
+
+4. **Voter reliability weighting** — weight votes by agreement with consensus. Voters who agree more often get higher weight.
+
+5. **The "same-dimension" rule** — never match sites that differ on multiple dimensions simultaneously. If A is brutalist-dark-minimal and B is editorial-light-verbose, the voter's reasoning will be incoherent.
+
+### 13. How the Pivot Might Look
+
+**If it works:**
+- The MDPD model achieves > 65% accuracy on held-out pairs (vs 49% for DPO)
+- The dimensional decomposition reveals 5–9 latent aesthetic dimensions
+- The residual vision model captures texture, micro-typography, and image quality
+- The system becomes the first AI that can explain *why* a design is good, not just *that* it's good
+
+**If it partially works:**
+- The MDPD model achieves 55–65% accuracy — better than chance but not great
+- Some dimensions are clean (whitespace, typography) while others are noisy (texture, semantic)
+- The residual is large (> 40%) — meaning metrics explain less than we hoped
+- We learn which dimensions are measurable and which require vision
+
+**If it fails:**
+- The MDPD model still achieves ~49% — meaning the problem is not the architecture but the data
+- Voters disagree too much (κ < 0.4) — meaning taste is more personal than we hoped
+- The dimensions don't emerge cleanly — meaning the ontology is wrong
+- We fall back to the nano-transformer with better metrics and more data
+
+**The key insight:** even if MDPD fails, we learn something valuable. The dimensional decomposition tells us *which* aspects of taste are measurable and which are not. That knowledge is worth more than the model itself.
+
+### 14. What's Next on the Agenda
+
+**This week:**
+1. Recruit 3 designers for the voter pilot
+2. Run the calibration phase (20 forced-choice questions per voter)
+3. Run 50 pairwise votes with reasoning
+4. Measure inter-rater agreement (Fleiss' κ)
+5. **Gate:** If κ < 0.4, stop and refine criteria
+
+**Next week (parallel):**
+1. Scraper fixes (GSAP, click-through, full-page)
+2. Metrics fixes (DOM-based asymmetry, quadrant distribution)
+3. Delete old data (taste_rationale.json, frames/, .webm)
+
+**Week 3:**
+1. Dimension discovery (factor analysis on pilot data)
+2. Build dimension extractor (reasoning → dimensions)
+3. Re-compile 461 pairs with voter reasoning
+
+**Week 4:**
+1. Build MDPD nano-transformer (N heads, sparse masking)
+2. Train heads independently
+3. Train aggregator
+4. Validate on held-out pairs
+
+**Week 5:**
+1. Residual vision model
+2. Validate on held-out pairs
+3. If residual model doesn't improve, accept and move on
+
+**Week 6+:**
+1. 900-site scrape (with fixed scraper)
+2. Full 10k vote collection
+3. Scale the MDPD model

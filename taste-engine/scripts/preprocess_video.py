@@ -1,14 +1,8 @@
 """
-preprocess_video.py — Phase 3 Prep: Video Preprocessor
-
-Uses PyTorch and TorchCodec to ingest Playwright .webm recordings,
-perform mathematical scene detection (MSE on structural layout shifts),
-and save keyframes for LLM multi-modal ingestion.
-
-Optimizations:
-- Batched extraction via C++ backend
-- Hardware acceleration (CUDA/MPS)
-- Downsampled MSE (128x128) to ignore tiny artifacts and speed up math
+preprocess_video.py — DEPRECATED (v2)
+Video keyframe extraction is no longer needed. The v2 pipeline uses 2 screenshots
+per site (hero + full page) instead of video recordings + keyframes.
+This file is kept for reference only. Do not run it.
 """
 import sys
 import os

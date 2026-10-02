@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Voter Guide — Taste Engine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                        display: ['"Space Grotesk"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        stone: {
+                            50: '#faf9f6', 100: '#f5f4f0', 200: '#eae8e1', 300: '#dedad0',
+                            400: '#c0bbb0', 500: '#948f83', 600: '#6e695e', 700: '#4f4b43',
+                            800: '#33312c', 900: '#171614',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f5f4f0;
+            color: #171614;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            letter-spacing: -0.015em;
+        }
+        .hairline-border { border: 1px solid #dedad0; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen selection:bg-stone-900 selection:text-stone-50">
+
+    <header class="sticky top-0 z-50 bg-[#f5f4f0]/95 backdrop-blur-md border-b border-[#dedad0] px-4 md:px-8 py-3.5 transition-all">
+        <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <a href="/" class="font-display font-bold text-lg md:text-xl text-stone-900 tracking-tight hover:opacity-85 transition-opacity">TASTE ENGINE</a>
+                <span class="text-[10px] font-mono uppercase tracking-[0.2em] text-stone-400 border-l border-[#dedad0] pl-3 hidden sm:inline">Voter Guide</span>
+            </div>
+            <a href="/" class="px-3 py-1.5 rounded-lg bg-white border border-[#dedad0] hover:bg-[#eae8e1] text-[11px] font-mono uppercase tracking-wider text-stone-700 transition-all shadow-xs">
+                ← Back to Arena
+            </a>
+        </div>
+    </header>
+
+    <main class="flex-1 w-full p-4 md:p-8 lg:py-12 flex justify-center">
+        <div class="bg-white border border-[#dedad0] rounded-2xl shadow-sm w-full max-w-4xl p-6 md:p-12 overflow-hidden">
+
+            <!-- Welcome -->
+            <div class="mb-10">
+                <h1 class="font-display font-bold text-3xl md:text-4xl text-stone-900 tracking-tight">Voter Guide</h1>
+                <p class="text-stone-600 text-base md:text-lg mt-3 leading-relaxed">
+                    You're helping build the first AI system that can judge design quality. Your votes and reasoning will train a model to distinguish elite design from generic design.
+                </p>
+                <p class="text-stone-500 text-sm mt-2">This guide takes 2 minutes to read. It will make your votes 10x more valuable.</p>
+            </div>
+
+            <!-- How voting works -->
+            <section class="mb-10">
+                <h2 class="font-display font-bold text-xl text-stone-900 tracking-tight mb-4">How voting works</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <div class="flex items-start gap-3">
+                            <span class="flex-shrink-0 w-7 h-7 rounded-full bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">1</span>
+                            <div>
+                                <p class="font-semibold text-stone-900 text-sm">Enter your name</p>
+                                <p class="text-stone-500 text-xs mt-0.5">First visit only — saved on your device</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <div class="flex items-start gap-3">
+                            <span class="flex-shrink-0 w-7 h-7 rounded-full bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">2</span>
+                            <div>
+                                <p class="font-semibold text-stone-900 text-sm">See two sites side by side</p>
+                                <p class="text-stone-500 text-xs mt-0.5">Site A (left) vs Site B (right) — scroll, hover, explore both</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <div class="flex items-start gap-3">
+                            <span class="flex-shrink-0 w-7 h-7 rounded-full bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">3</span>
+                            <div>
+                                <p class="font-semibold text-stone-900 text-sm">Click the better one</p>
+                                <p class="text-stone-500 text-xs mt-0.5">A or B — or Space to skip if tied</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <div class="flex items-start gap-3">
+                            <span class="flex-shrink-0 w-7 h-7 rounded-full bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">4</span>
+                            <div>
+                                <p class="font-semibold text-stone-900 text-sm">Tell us why (required)</p>
+                                <p class="text-stone-500 text-xs mt-0.5">1–2 sentences citing specific features — this is the most important part</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 bg-stone-900 text-stone-50 rounded-lg px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <span class="text-xs font-mono uppercase tracking-wider text-stone-400">Shortcuts:</span>
+                    <span class="text-xs font-mono"><kbd class="px-1.5 py-0.5 rounded bg-stone-800 border border-stone-700 text-stone-300">A</kbd> pick left</span>
+                    <span class="text-xs font-mono"><kbd class="px-1.5 py-0.5 rounded bg-stone-800 border border-stone-700 text-stone-300">B</kbd> pick right</span>
+                    <span class="text-xs font-mono"><kbd class="px-1.5 py-0.5 rounded bg-stone-800 border border-stone-700 text-stone-300">Space</kbd> skip/draw</span>
+                    <span class="text-xs font-mono"><kbd class="px-1.5 py-0.5 rounded bg-stone-800 border border-stone-700 text-stone-300">F</kbd> toggle view</span>
+                </div>
+            </section>
+
+            <!-- The rules -->
+            <section class="mb-10">
+                <h2 class="font-display font-bold text-xl text-stone-900 tracking-tight mb-4">The rules</h2>
+                <p class="text-stone-700 text-sm mb-4">Vote on <strong>aesthetic quality</strong>, not personal preference.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <p class="text-xs font-mono font-bold text-red-600 uppercase tracking-wider mb-2">Don't vote based on</p>
+                        <ul class="text-sm text-stone-700 space-y-1.5 list-disc pl-4">
+                            <li>Brand recognition</li>
+                            <li>Whether you like the product</li>
+                            <li>Familiarity or trends</li>
+                            <li>Personal taste in aesthetics</li>
+                            <li>Whether you'd use the site</li>
+                        </ul>
+                    </div>
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <p class="text-xs font-mono font-bold text-green-700 uppercase tracking-wider mb-2">Do vote based on</p>
+                        <ul class="text-sm text-stone-700 space-y-1.5 list-disc pl-4">
+                            <li>Layout and spacing</li>
+                            <li>Typography and hierarchy</li>
+                            <li>Color discipline</li>
+                            <li>Grid structure and composition</li>
+                            <li>Motion and interaction quality</li>
+                            <li>Overall cohesion and craft</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <p class="text-sm text-stone-700"><strong>If you can't decide:</strong> vote for the one you'd rather show a client. If truly torn, press <kbd class="px-1.5 py-0.5 rounded border border-stone-300 bg-stone-100 text-stone-700 font-mono text-xs">Space</kbd> to skip — don't force it.</p>
+                </div>
+            </section>
+
+            <!-- What to keep in mind -->
+            <section class="mb-10">
+                <h2 class="font-display font-bold text-xl text-stone-900 tracking-tight mb-4">What to keep in mind</h2>
+                <p class="text-stone-700 text-sm mb-4">When comparing two sites, consider these dimensions. You don't need to think about all of them — just the ones that stand out in this specific comparison.</p>
+                <div class="space-y-3">
+                    <div class="flex items-start gap-3 bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <span class="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">W</span>
+                        <div>
+                            <p class="font-semibold text-stone-900 text-sm">Whitespace</p>
+                            <p class="text-stone-500 text-xs">Is the negative space intentional? Does it create breathing room or feel empty? Is the density deliberate?</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <span class="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">T</span>
+                        <div>
+                            <p class="font-semibold text-stone-900 text-sm">Typography</p>
+                            <p class="text-stone-500 text-xs">Is the type hierarchy clear? Is the scale, weight, and spacing deliberate? Does the type feel like an afterthought or a design element?</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <span class="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">C</span>
+                        <div>
+                            <p class="font-semibold text-stone-900 text-sm">Color</p>
+                            <p class="text-stone-500 text-xs">Is the palette cohesive? Does it support the brand or fight it? Is there discipline or chaos?</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <span class="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">G</span>
+                        <div>
+                            <p class="font-semibold text-stone-900 text-sm">Grid & Layout</p>
+                            <p class="text-stone-500 text-xs">Is the structure disciplined? Does it break the grid with purpose or by accident? Do elements align?</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <span class="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">M</span>
+                        <div>
+                            <p class="font-semibold text-stone-900 text-sm">Motion</p>
+                            <p class="text-stone-500 text-xs">(if visible) Does the animation feel smooth and intentional? Does it enhance or distract?</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <span class="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">X</span>
+                        <div>
+                            <p class="font-semibold text-stone-900 text-sm">Texture & Imagery</p>
+                            <p class="text-stone-500 text-xs">Are the images high quality? Do they feel art-directed or like stock photos? Is there grain, texture, flatness?</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <span class="flex-shrink-0 w-8 h-8 rounded-lg bg-stone-900 text-stone-50 flex items-center justify-center text-xs font-mono font-bold">O</span>
+                        <div>
+                            <p class="font-semibold text-stone-900 text-sm">Overall cohesion</p>
+                            <p class="text-stone-500 text-xs">Does everything feel like it belongs together? Is there a unified aesthetic statement?</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4 bg-stone-100 border border-stone-300 rounded-lg p-4">
+                    <p class="text-sm text-stone-700"><strong>Key insight:</strong> a good design is not one that maximizes all dimensions. It's one that achieves <strong>coherent tension</strong> — deliberate trade-offs that create a unified statement. A brutalist site with zero whitespace can be elite. An airy editorial site with minimal type can be elite. What matters is whether the choices feel intentional.</p>
+                </div>
+            </section>
+
+            <!-- How to write reasoning -->
+            <section class="mb-10">
+                <h2 class="font-display font-bold text-xl text-stone-900 tracking-tight mb-4">How to write reasoning</h2>
+                <p class="text-stone-700 text-sm mb-4">Your reasoning becomes the training label. Vague reasoning teaches the model nothing. Specific reasoning teaches it exactly what to look for.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <p class="text-xs font-mono font-bold text-red-600 uppercase tracking-wider mb-2">Useless (vague)</p>
+                        <ul class="text-sm text-stone-700 space-y-1.5 list-disc pl-4">
+                            <li>"A looks cleaner"</li>
+                            <li>"B is boring"</li>
+                            <li>"A is more premium"</li>
+                            <li>"I just like A"</li>
+                            <li>"B feels cluttered"</li>
+                            <li>"A has better vibes"</li>
+                        </ul>
+                        <p class="text-xs text-stone-500 mt-3 border-t border-red-100 pt-2">These provide no dimensional data — the model can't learn from them.</p>
+                    </div>
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <p class="text-xs font-mono font-bold text-green-700 uppercase tracking-wider mb-2">Valuable (specific)</p>
+                        <ul class="text-sm text-stone-700 space-y-1.5 list-disc pl-4">
+                            <li>"A's whitespace is more generous — the content has more breathing room"</li>
+                            <li>"B's typography is flat — no hierarchy between heading and body"</li>
+                            <li>"A's color palette is monochromatic with one accent — B uses four competing colors"</li>
+                            <li>"A's grid is rigorous — elements align to a clear structure"</li>
+                            <li>"B has too many competing elements — badges and CTAs fight for attention"</li>
+                            <li>"A's type has more contrast — large display type against small body text"</li>
+                        </ul>
+                        <p class="text-xs text-stone-500 mt-3 border-t border-green-100 pt-2">These isolate specific features — the model knows exactly what to learn.</p>
+                    </div>
+                </div>
+
+                <div class="bg-stone-50 border border-stone-200 rounded-lg p-4 mb-4">
+                    <p class="text-xs font-mono uppercase tracking-wider text-stone-500 mb-2">The formula</p>
+                    <p class="text-sm text-stone-800 font-mono">[Winner] is better because [specific feature] — [what it does for the design].</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    <div class="bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <p class="text-stone-500 text-xs mb-1">Good</p>
+                        <p class="text-stone-800">"A is better because the whitespace is more generous — it gives the content room to breathe."</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <p class="text-stone-500 text-xs mb-1">Good</p>
+                        <p class="text-stone-800">"B is better because the type hierarchy is clearer — display type is dramatically larger than body."</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <p class="text-stone-500 text-xs mb-1">Good</p>
+                        <p class="text-stone-800">"A is better because the color palette is more disciplined — monochromatic with one accent."</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Time commitment -->
+            <section class="mb-10">
+                <h2 class="font-display font-bold text-xl text-stone-900 tracking-tight mb-4">Time commitment</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200 text-center">
+                        <p class="font-display font-bold text-2xl text-stone-900">30–60s</p>
+                        <p class="text-stone-500 text-xs mt-1">Per vote (viewing + reasoning)</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200 text-center">
+                        <p class="font-display font-bold text-2xl text-stone-900">~50</p>
+                        <p class="text-stone-500 text-xs mt-1">Votes to start</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200 text-center">
+                        <p class="font-display font-bold text-2xl text-stone-900">30–60m</p>
+                        <p class="text-stone-500 text-xs mt-1">Total time</p>
+                    </div>
+                </div>
+                <p class="text-stone-500 text-sm mt-3">You can pause and resume — your progress is saved automatically.</p>
+            </section>
+
+            <!-- FAQ -->
+            <section class="mb-6">
+                <h2 class="font-display font-bold text-xl text-stone-900 tracking-tight mb-4">FAQ</h2>
+                <div class="space-y-3">
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">What if the sites look identical?</p>
+                        <p class="text-stone-600 text-sm mt-1">Look closer. There's always a difference — whitespace, type scale, color temperature, image quality. If you genuinely can't find one, press Space to skip.</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">Does my reasoning have to be long?</p>
+                        <p class="text-stone-600 text-sm mt-1">No. 1–2 sentences is perfect. Just be specific.</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">Do I need to enter my name every time?</p>
+                        <p class="text-stone-600 text-sm mt-1">No — it's saved on your device after the first visit.</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">What if I clicked A but changed my mind?</p>
+                        <p class="text-stone-600 text-sm mt-1">In the reasoning box, hit ← Back to return to the pair and pick differently.</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">What happens to my votes?</p>
+                        <p class="text-stone-600 text-sm mt-1">They're stored in a database and used to train the AI model. Your reasoning becomes the training label.</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">Can I see how I'm doing?</p>
+                        <p class="text-stone-600 text-sm mt-1">Yes — visit the Leaderboard page to see your agreement rate with other voters.</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">What if I don't know design terminology?</p>
+                        <p class="text-stone-600 text-sm mt-1">That's fine. Describe what you see in your own words. "The text is bigger and bolder" is just as useful as "the type hierarchy has more contrast."</p>
+                    </div>
+                    <div class="bg-stone-50 rounded-lg p-4 border border-stone-200">
+                        <p class="font-semibold text-stone-900 text-sm">Should I vote on mobile or desktop?</p>
+                        <p class="text-stone-600 text-sm mt-1">Desktop. The sites are rendered at 1440×900.</p>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <footer class="py-6 px-6 text-center text-[11px] font-mono tracking-wider uppercase text-stone-500 bg-[#eae8e1]">
+        <span>TASTE Engine · Multi-Dimensional Preference Decomposition</span>
+    </footer>
+
+</body>
+</html>

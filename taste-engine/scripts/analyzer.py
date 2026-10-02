@@ -1,5 +1,11 @@
 """
-analyzer.py — Step 3: Extract visual DNA from screenshots.
+analyzer.py — Step 3: Extract visual DNA from screenshots + DOM metadata.
+
+V2 changes:
+  - Replaced broken luminance asymmetry with DOM-based layout imbalance
+  - Added 3x3 quadrant distribution (spatial signature)
+  - Added DOM features: font variance, letter-spacing range, z-index depth, section count
+  - Reads metadata.json for DOM-derived features
 """
 import sys
 import json
@@ -11,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from PIL import Image, ImageStat, ImageChops
 from colorthief import ColorThief
 from rich.console import Console
-from config import DATA_DIR, VISUAL_FILE
+from config import DATA_DIR, VISUAL_FILE, METADATA_FILE
 
 console = Console()
 
@@ -66,40 +72,6 @@ def estimate_whitespace_ratio(img: Image.Image) -> float:
     return round(extreme / len(pixels), 3)
 
 
-def calculate_asymmetry(img: Image.Image) -> float:
-    """
-    Calculate visual center of mass on the X-axis based on luminance.
-    Returns a score 0-1. 0 = perfectly centered, 1 = extremely skewed left/right.
-    """
-    img_gray = img.convert("L")
-    w, h = img_gray.size
-    
-    # Calculate moments
-    total_mass = 0
-    m_x = 0
-    pixels = img_gray.load()
-    
-    # Fast sampling every 10th pixel
-    for x in range(0, w, 10):
-        for y in range(0, h, 10):
-            # Invert so dark pixels have 'mass' on a light background, or vice versa?
-            # Let's just use raw variance from center
-            val = pixels[x, y]
-            total_mass += val
-            m_x += val * x
-            
-    if total_mass == 0:
-        return 0
-        
-    center_of_mass_x = m_x / total_mass
-    # Distance from true center (w/2) normalized by half-width
-    true_center = w / 2
-    distance = abs(center_of_mass_x - true_center)
-    asymmetry_score = distance / true_center
-    
-    return round(asymmetry_score, 3)
-
-
 def calculate_color_variance(colors: list[tuple]) -> float:
     """
     Calculate how 'rhythmic' or distinct the palette is.
@@ -110,20 +82,170 @@ def calculate_color_variance(colors: list[tuple]) -> float:
     r_vals = [c[0] for c in colors]
     g_vals = [c[1] for c in colors]
     b_vals = [c[2] for c in colors]
-    
+
     r_var = sum((x - sum(r_vals)/len(r_vals))**2 for x in r_vals) / len(r_vals)
     g_var = sum((x - sum(g_vals)/len(g_vals))**2 for x in g_vals) / len(g_vals)
     b_var = sum((x - sum(b_vals)/len(b_vals))**2 for x in b_vals) / len(b_vals)
-    
-    total_var = (r_var + g_var + b_var) / (255**2 * 3) # normalize roughly to 0-1
-    return round(total_var * 10, 3) # Scale up for readability
+
+    total_var = (r_var + g_var + b_var) / (255**2 * 3)  # normalize roughly to 0-1
+    return round(total_var * 10, 3)  # Scale up for readability
+
+
+# ── V2: DOM-based metrics (from metadata.json) ─────────────────────────────
+
+
+def dom_layout_imbalance(computed_styles: list[dict], viewport_w: int = 1440) -> float:
+    """
+    Layout imbalance: how unevenly is element area distributed
+    across the vertical midline, weighted by element area.
+    0.0 = perfectly balanced, 1.0 = completely one-sided.
+
+    This replaces the broken luminance-center-of-mass asymmetry,
+    which had no variance across all 100 sites (all scored 0.001-0.25).
+    """
+    center = viewport_w / 2
+    left_mass = 0.0
+    right_mass = 0.0
+
+    for el in computed_styles:
+        bbox = el.get("bbox", {})
+        x = bbox.get("x", 0)
+        w = bbox.get("w", 0)
+        h = bbox.get("h", 0)
+        if w == 0 or h == 0:
+            continue
+        el_center = x + w / 2
+        area = w * h
+        if el_center < center:
+            left_mass += area
+        else:
+            right_mass += area
+
+    total = left_mass + right_mass
+    if total == 0:
+        return 0.0
+    return round(abs(left_mass - right_mass) / total, 3)
+
+
+def dom_quadrant_distribution(computed_styles: list[dict], viewport_w: int = 1440, viewport_h: int = 900) -> list[float]:
+    """
+    3x3 quadrant distribution: what fraction of element area falls in each
+    grid cell. Captures spatial signature: "top-left heavy" vs "centered"
+    vs "diagonal" — the actual vocabulary of layout.
+
+    Returns 9 floats (0-1) summing to ~1.0, ordered left-to-right, top-to-bottom.
+    """
+    # Define quadrant boundaries
+    x_edges = [0, viewport_w / 3, 2 * viewport_w / 3, viewport_w]
+    y_edges = [0, viewport_h / 3, 2 * viewport_h / 3, viewport_h]
+
+    quadrant_mass = [0.0] * 9
+
+    for el in computed_styles:
+        bbox = el.get("bbox", {})
+        x = bbox.get("x", 0)
+        y = bbox.get("y", 0)
+        w = bbox.get("w", 0)
+        h = bbox.get("h", 0)
+        if w == 0 or h == 0:
+            continue
+
+        el_center_x = x + w / 2
+        el_center_y = y + h / 2
+        area = w * h
+
+        # Find which quadrant this element belongs to
+        qx = min(2, max(0, int(el_center_x / (viewport_w / 3))))
+        qy = min(2, max(0, int(el_center_y / (viewport_h / 3))))
+        quadrant_mass[qy * 3 + qx] += area
+
+    total = sum(quadrant_mass)
+    if total == 0:
+        return [0.0] * 9
+    return [round(m / total, 3) for m in quadrant_mass]
+
+
+def dom_typography_features(computed_styles: list[dict]) -> dict:
+    """
+    Extract typography features from DOM computed styles.
+    - font_size_variance: how much do font sizes vary? (flat vs hierarchical)
+    - letter_spacing_range: min/max letter-spacing (micro-typography)
+    - z_index_depth: how many layers of z-index? (depth/complexity)
+    - section_count: how many sections? (page structure)
+    """
+    font_sizes = []
+    letter_spacings = []
+    z_indices = set()
+    section_count = 0
+
+    for el in computed_styles:
+        # Font sizes
+        fs_str = el.get("fontSize", "0px")
+        try:
+            fs = float(fs_str.replace("px", ""))
+            if fs > 0:
+                font_sizes.append(fs)
+        except (ValueError, AttributeError):
+            pass
+
+        # Letter spacing
+        ls_str = el.get("letterSpacing", "normal")
+        if ls_str != "normal":
+            try:
+                ls = float(ls_str.replace("px", ""))
+                letter_spacings.append(ls)
+            except (ValueError, AttributeError):
+                pass
+
+        # Z-index
+        z_str = el.get("zIndex", "auto")
+        if z_str != "auto":
+            try:
+                z_indices.add(int(z_str))
+            except (ValueError, TypeError):
+                pass
+
+        # Section count
+        if el.get("tag") == "SECTION":
+            section_count += 1
+
+    # Font size variance (coefficient of variation)
+    if len(font_sizes) >= 2:
+        mean_fs = sum(font_sizes) / len(font_sizes)
+        variance = sum((fs - mean_fs) ** 2 for fs in font_sizes) / len(font_sizes)
+        std_fs = variance ** 0.5
+        font_size_cv = round(std_fs / mean_fs, 3) if mean_fs > 0 else 0.0
+    else:
+        font_size_cv = 0.0
+
+    # Letter spacing range
+    if letter_spacings:
+        ls_range = round(max(letter_spacings) - min(letter_spacings), 1)
+        ls_min = round(min(letter_spacings), 1)
+        ls_max = round(max(letter_spacings), 1)
+    else:
+        ls_range = 0.0
+        ls_min = 0.0
+        ls_max = 0.0
+
+    return {
+        "font_size_cv": font_size_cv,          # coefficient of variation
+        "font_size_min": round(min(font_sizes), 1) if font_sizes else 0,
+        "font_size_max": round(max(font_sizes), 1) if font_sizes else 0,
+        "letter_spacing_range": ls_range,
+        "letter_spacing_min": ls_min,
+        "letter_spacing_max": ls_max,
+        "z_index_depth": len(z_indices),
+        "section_count": section_count,
+    }
 
 
 def analyze_image(site_id: str) -> dict | None:
-    """Run full visual analysis on a site's hero screenshot."""
+    """Run full visual analysis on a site's hero screenshot + DOM metadata."""
     site_dir  = DATA_DIR / site_id
     img_path  = site_dir / "screenshot_hero.png"
     full_path = site_dir / "screenshot_full.png"
+    meta_path = site_dir / METADATA_FILE
 
     if not img_path.exists():
         console.print(f"[yellow]⚠ No hero screenshot for[/yellow] {site_id}")
@@ -152,6 +274,24 @@ def analyze_image(site_id: str) -> dict | None:
         full_img    = Image.open(full_path)
         full_height = full_img.height
 
+    # ── V2: DOM-based metrics ──────────────────────────────────────────────
+    computed_styles = []
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+            computed_styles = meta.get("dom_structure", {}).get("computed_styles", [])
+        except Exception:
+            pass
+
+    # DOM-based layout imbalance (replaces broken luminance asymmetry)
+    layout_imbalance = dom_layout_imbalance(computed_styles, viewport_w=w)
+
+    # 3x3 quadrant distribution
+    quadrant_dist = dom_quadrant_distribution(computed_styles, viewport_w=w, viewport_h=h)
+
+    # Typography + structure features
+    typo_features = dom_typography_features(computed_styles)
+
     analysis = {
         "dimensions": {"width": w, "height": h},
         "full_page_height_px": full_height,
@@ -174,9 +314,21 @@ def analyze_image(site_id: str) -> dict | None:
         "palette_mood":      classify_palette(palette),
         "avg_brightness":    round(brightness, 3),
         "whitespace_ratio":  estimate_whitespace_ratio(img),
-        "asymmetry_score":   calculate_asymmetry(img),
         "color_variance":    calculate_color_variance(palette),
         "file_size_kb":      round(img_path.stat().st_size / 1024, 1),
+
+        # ── V2: DOM-based metrics ─────────────────────────────────────────
+        "layout_imbalance":         layout_imbalance,
+        "quadrant_distribution":    quadrant_dist,
+        "font_size_cv":             typo_features["font_size_cv"],
+        "font_size_min":            typo_features["font_size_min"],
+        "font_size_max":            typo_features["font_size_max"],
+        "letter_spacing_range":    typo_features["letter_spacing_range"],
+        "letter_spacing_min":       typo_features["letter_spacing_min"],
+        "letter_spacing_max":       typo_features["letter_spacing_max"],
+        "z_index_depth":            typo_features["z_index_depth"],
+        "section_count":            typo_features["section_count"],
+        "dom_element_count":        len(computed_styles),
     }
 
     (site_dir / VISUAL_FILE).write_text(json.dumps(analysis, indent=2))
@@ -184,7 +336,8 @@ def analyze_image(site_id: str) -> dict | None:
         f"[green]✓[/green] {site_id}: "
         f"palette=[bold]{analysis['palette_mood']}[/bold], "
         f"brightness={analysis['avg_brightness']}, "
-        f"whitespace={analysis['whitespace_ratio']}"
+        f"whitespace={analysis['whitespace_ratio']}, "
+        f"imbalance={analysis['layout_imbalance']}"
     )
     return analysis
 

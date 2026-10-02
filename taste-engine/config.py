@@ -15,21 +15,18 @@ LOGS_DIR     = ROOT / "logs"
 MASTER_FILE  = DATA_DIR / "master_dataset.jsonl"
 ELO_FILE     = DATA_DIR / "elo_scores.json"
 
-# ── Canonical per-site filenames (Plan A freeze) ─────────────────────────
+# ── Canonical per-site filenames (v2) ─────────────────────────────────────
 # Single source of truth. All scripts must import these, never hardcode.
 METADATA_FILE     = "metadata.json"
 VISUAL_FILE       = "visual_analysis.json"
 MOTION_CODE_FILE  = "motion_code.json"
-STORYBOARD_FILE   = "motion_storyboard.json"
-FRAMES_DIRNAME    = "frames"
-RATIONALE_FILE    = "taste_rationale.json"
 VLM_RAW_FILE      = "stage2_vlm_raw.json"
 EMBED_FILE        = "embedding.json"
-# Legacy files (deprecated, read-only fallback, do not write new):
-LEGACY_LLAVA      = "llava_analysis.json"
-LEGACY_FRAMES     = "frames_manifest.json"
-LEGACY_CLAUDE     = "claude_rationale.json"
-LEGACY_RATIONALE_MD = "taste_rationale.md"
+# Deprecated (v1 — no longer written):
+LEGACY_STORYBOARD = "motion_storyboard.json"
+LEGACY_FRAMES    = "frames"
+LEGACY_RATIONALE = "taste_rationale.json"
+LEGACY_LLAVA     = "llava_analysis.json"
 
 # Ensure directories exist
 DATA_DIR.mkdir(exist_ok=True)

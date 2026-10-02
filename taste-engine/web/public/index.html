@@ -141,6 +141,11 @@
                     <span>Leaderboard</span>
                     <span class="text-[10px] opacity-70">↗</span>
                 </a>
+                <a href="/guide.html" target="_blank"
+                   class="px-3 py-1.5 rounded-lg border border-[#dedad0] bg-white hover:bg-[#f5f4f0] text-[11px] font-mono tracking-wider uppercase text-stone-600 transition-all flex items-center gap-1.5">
+                    <span>Voter Guide</span>
+                    <span class="text-[10px] opacity-70">↗</span>
+                </a>
             </div>
 
         </div>
@@ -320,6 +325,62 @@
         </div>
     </div>
 
+    <!-- ── VOTER ID MODAL ───────────────────────────────────────────── -->
+    <div id="voterModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-8 flex flex-col gap-5">
+            <div>
+                <h2 class="font-display font-bold text-2xl text-stone-900 tracking-tight">Welcome to the TASTE Engine</h2>
+                <p class="text-stone-600 text-sm mt-2 leading-relaxed">You're helping build the first AI system that can judge design quality. Your votes and reasoning will train the model.</p>
+            </div>
+            <div>
+                <label class="block text-xs font-mono uppercase tracking-wider text-stone-500 mb-2">Your Name or Identifier</label>
+                <input type="text" id="voterIdInput" 
+                       class="w-full px-4 py-3 rounded-lg border border-stone-300 focus:border-stone-900 focus:outline-none text-stone-900 font-mono text-sm"
+                       placeholder="e.g. alex_designer"
+                       autocomplete="off">
+            </div>
+            <button id="voterSubmitBtn" 
+                    class="w-full py-3 px-6 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-50 font-display font-semibold text-sm tracking-wider uppercase transition-all">
+                Start Voting →
+            </button>
+            <div class="bg-stone-100 border border-stone-200 rounded-lg p-4 mt-2">
+                <p class="text-xs text-stone-600 font-medium text-center mb-2">⚠️ CRITICAL: You must read the evaluation protocol before voting.</p>
+                <a href="/guide.html" target="_blank" class="block text-center text-sm font-display font-bold text-stone-900 hover:text-stone-600 underline transition-colors">
+                    Read the Official Voter Guide ↗
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── REASONING MODAL ─────────────────────────────────────────── -->
+    <div id="reasoningModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full mx-4 p-8 flex flex-col gap-5">
+            <div>
+                <span class="font-mono text-xs uppercase tracking-[0.2em] text-stone-400">You selected</span>
+                <h2 id="reasoningTitle" class="font-display font-bold text-2xl text-stone-900 tracking-tight mt-1">Site A</h2>
+            </div>
+            <div>
+                <label class="block text-xs font-mono uppercase tracking-wider text-stone-500 mb-2">Why is it better? <span class="text-stone-400">(required)</span></label>
+                <textarea id="reasoningInput" 
+                          class="w-full px-4 py-3 rounded-lg border border-stone-300 focus:border-stone-900 focus:outline-none text-stone-900 text-sm resize-none"
+                          rows="3"
+                          placeholder="What specific features made it better? e.g. 'A's whitespace is more generous — the content has more breathing room'"
+                          autocomplete="off"></textarea>
+                <p class="text-xs text-stone-400 mt-1.5">Be specific — cite features, not feelings. 1–2 sentences is perfect.</p>
+            </div>
+            <div class="flex gap-3">
+                <button id="reasoningBackBtn" 
+                        class="flex-1 py-3 px-4 rounded-lg border border-stone-300 text-stone-600 font-display font-semibold text-sm tracking-wide hover:bg-stone-50 transition-all">
+                    ← Back
+                </button>
+                <button id="reasoningSubmitBtn" 
+                        class="flex-1 py-3 px-4 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-50 font-display font-semibold text-sm tracking-wide transition-all">
+                    Submit Vote →
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── DESKTOP FOOTER ─────────────────────────────────────────────── -->
     <footer class="hidden lg:block py-4 px-6 border-t border-[#dedad0] text-center text-[11px] font-mono tracking-wider uppercase text-stone-500 bg-[#f5f4f0]">
         <span>TrueSkill Convergence Model · Pairwise Maximum-Information Routing</span>
@@ -333,6 +394,8 @@
         let mobileTab = 'both'; // 'both', 'a', or 'b'
         let sessionVotes = 0;
         let isSubmitting = false;
+        let voterId = null;
+        let pendingVote = null; // { winnerId, loserId, isDraw }
 
         const imgA = document.getElementById('imgA');
         const imgB = document.getElementById('imgB');
@@ -347,6 +410,18 @@
         const scrollHintB = document.getElementById('scrollHintB');
         const sessionCountEl = document.getElementById('sessionVoteCount');
 
+        // Voter modal elements
+        const voterModal = document.getElementById('voterModal');
+        const voterIdInput = document.getElementById('voterIdInput');
+        const voterSubmitBtn = document.getElementById('voterSubmitBtn');
+
+        // Reasoning modal elements
+        const reasoningModal = document.getElementById('reasoningModal');
+        const reasoningTitle = document.getElementById('reasoningTitle');
+        const reasoningInput = document.getElementById('reasoningInput');
+        const reasoningBackBtn = document.getElementById('reasoningBackBtn');
+        const reasoningSubmitBtn = document.getElementById('reasoningSubmitBtn');
+
         const viewHeroBtn = document.getElementById('viewHeroBtn');
         const viewFullBtn = document.getElementById('viewFullBtn');
 
@@ -355,6 +430,76 @@
         const tabSiteB = document.getElementById('tabSiteB');
         const mobileLabelA = document.getElementById('mobileLabelA');
         const mobileLabelB = document.getElementById('mobileLabelB');
+
+        // ── VOTER ID MODAL ───────────────────────────────────────────
+        function initVoterId() {
+            const saved = localStorage.getItem('taste_voter_id');
+            if (saved) {
+                voterId = saved;
+                voterModal.classList.add('hidden');
+            } else {
+                voterModal.classList.remove('hidden');
+                voterIdInput.focus();
+            }
+        }
+
+        function submitVoterId() {
+            let id = voterIdInput.value.trim();
+            if (!id) return;
+            // Normalize ID: lowercase and replace spaces with underscores
+            id = id.toLowerCase().replace(/\s+/g, '_');
+            voterId = id;
+            localStorage.setItem('taste_voter_id', id);
+            voterModal.classList.add('hidden');
+        }
+
+        voterSubmitBtn.addEventListener('click', submitVoterId);
+        voterIdInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitVoterId();
+        });
+
+        // ── REASONING MODAL ──────────────────────────────────────────
+        function openReasoning(winnerId, loserId, isDraw) {
+            if (isDraw) {
+                // Draws don't need reasoning — submit immediately
+                submitVote(winnerId, loserId, true, null);
+                return;
+            }
+            pendingVote = { winnerId, loserId, isDraw };
+            const winnerName = winnerId === currentA?.site_id ? 'Site A' : 'Site B';
+            reasoningTitle.textContent = winnerName;
+            reasoningInput.value = '';
+            reasoningModal.classList.remove('hidden');
+            reasoningInput.focus();
+        }
+
+        function closeReasoning() {
+            reasoningModal.classList.add('hidden');
+            pendingVote = null;
+            reasoningInput.value = '';
+        }
+
+        function submitReasoning() {
+            if (!pendingVote) return;
+            const reasoning = reasoningInput.value.trim();
+            if (reasoning.length < 10) {
+                reasoningInput.classList.add('border-red-400');
+                reasoningInput.focus();
+                return;
+            }
+            reasoningInput.classList.remove('border-red-400');
+            closeReasoning();
+            submitVote(pendingVote.winnerId, pendingVote.loserId, pendingVote.isDraw, reasoning);
+        }
+
+        reasoningSubmitBtn.addEventListener('click', submitReasoning);
+        reasoningBackBtn.addEventListener('click', closeReasoning);
+        reasoningInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitReasoning();
+            }
+        });
 
         imgA.addEventListener('load', () => {
             imgA.classList.remove('opacity-0');
@@ -490,7 +635,7 @@
             containerB.scrollTop = 0;
         }
 
-        async function submitVote(winnerId, loserId, isDraw = false) {
+        async function submitVote(winnerId, loserId, isDraw = false, reasoning = null) {
             if (isSubmitting || !currentA || !currentB) return;
             isSubmitting = true;
 
@@ -501,7 +646,13 @@
                 await fetch('/api/vote', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ winner_id: winnerId, loser_id: loserId, is_draw: isDraw })
+                    body: JSON.stringify({
+                        winner_id: winnerId,
+                        loser_id: loserId,
+                        is_draw: isDraw,
+                        voter_id: voterId,
+                        reasoning: reasoning
+                    })
                 });
             } catch (err) {
                 console.error("Failed to submit vote:", err);
@@ -512,43 +663,44 @@
 
         // Desktop Button Triggers
         document.getElementById('btnA').addEventListener('click', () => {
-            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id);
+            if (currentA && currentB) openReasoning(currentA.site_id, currentB.site_id, false);
         });
 
         document.getElementById('btnB').addEventListener('click', () => {
-            if (currentA && currentB) submitVote(currentB.site_id, currentA.site_id);
+            if (currentA && currentB) openReasoning(currentB.site_id, currentA.site_id, false);
         });
 
         document.getElementById('skipBtn').addEventListener('click', () => {
-            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id, true);
+            if (currentA && currentB) openReasoning(currentA.site_id, currentB.site_id, true);
         });
 
         // Mobile Dock Button Triggers
         document.getElementById('mobileBtnA').addEventListener('click', () => {
-            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id);
+            if (currentA && currentB) openReasoning(currentA.site_id, currentB.site_id, false);
         });
 
         document.getElementById('mobileBtnB').addEventListener('click', () => {
-            if (currentA && currentB) submitVote(currentB.site_id, currentA.site_id);
+            if (currentA && currentB) openReasoning(currentB.site_id, currentA.site_id, false);
         });
 
         document.getElementById('mobileSkipBtn').addEventListener('click', () => {
-            if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id, true);
+            if (currentA && currentB) openReasoning(currentA.site_id, currentB.site_id, true);
         });
 
         // Keyboard Shortcuts
         window.addEventListener('keydown', (e) => {
             if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+            if (!reasoningModal.classList.contains('hidden')) return; // Don't intercept when reasoning is open
 
             if (e.key === '1' || e.key === 'a' || e.key === 'A') {
                 e.preventDefault();
-                if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id);
+                if (currentA && currentB) openReasoning(currentA.site_id, currentB.site_id, false);
             } else if (e.key === '2' || e.key === 'b' || e.key === 'B') {
                 e.preventDefault();
-                if (currentA && currentB) submitVote(currentB.site_id, currentA.site_id);
+                if (currentA && currentB) openReasoning(currentB.site_id, currentA.site_id, false);
             } else if (e.code === 'Space' || e.key === 's' || e.key === 'S') {
                 e.preventDefault();
-                if (currentA && currentB) submitVote(currentA.site_id, currentB.site_id, true);
+                if (currentA && currentB) openReasoning(currentA.site_id, currentB.site_id, true);
             } else if (e.key === 'f' || e.key === 'F') {
                 e.preventDefault();
                 setViewMode(viewMode === 'hero' ? 'full' : 'hero');
@@ -574,6 +726,8 @@
             if (dock) dock.style.display = 'none';
         }
 
+        // Initialize
+        initVoterId();
         loadNextPair();
     </script>
 </body>

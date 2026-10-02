@@ -43,29 +43,42 @@ MOTION_FINGERPRINTS = """() => {
 }"""
 
 # ── GSAP interceptor — must be injected BEFORE page JS runs ───────────────
+# Polls for async-loaded GSAP (ES module imports never set window.gsap)
 
 GSAP_INTERCEPTOR = """() => {
     window.__taste_gsap_calls = [];
     window.__taste_gsap_timelines = [];
+    window.__taste_gsap_intercepted = false;
 
-    if (!window.gsap) return;
+    const install = () => {
+        if (window.gsap && !window.__taste_gsap_intercepted) {
+            window.__taste_gsap_intercepted = true;
 
-    // Intercept gsap.to / gsap.from / gsap.fromTo
-    ['to', 'from', 'fromTo', 'set'].forEach(method => {
-        const orig = gsap[method].bind(gsap);
-        gsap[method] = function(...args) {
-            window.__taste_gsap_calls.push({ method, args: JSON.stringify(args).slice(0, 500) });
-            return orig(...args);
-        };
-    });
+            // Intercept gsap.to / gsap.from / gsap.fromTo
+            ['to', 'from', 'fromTo', 'set'].forEach(method => {
+                const orig = gsap[method].bind(gsap);
+                gsap[method] = function(...args) {
+                    window.__taste_gsap_calls.push({ method, args: JSON.stringify(args).slice(0, 500) });
+                    return orig(...args);
+                };
+            });
 
-    // Intercept gsap.timeline()
-    const origTimeline = gsap.timeline.bind(gsap);
-    gsap.timeline = function(config) {
-        const tl = origTimeline(config);
-        window.__taste_gsap_timelines.push({ config: JSON.stringify(config) });
-        return tl;
+            // Intercept gsap.timeline()
+            const origTimeline = gsap.timeline.bind(gsap);
+            gsap.timeline = function(config) {
+                const tl = origTimeline(config);
+                window.__taste_gsap_timelines.push({ config: JSON.stringify(config) });
+                return tl;
+            };
+        }
     };
+
+    // Install immediately (catches synchronous GSAP)
+    install();
+
+    // Poll for async-loaded GSAP (checks every 100ms for 20 seconds)
+    const interval = setInterval(install, 100);
+    setTimeout(() => clearInterval(interval), 20000);
 }"""
 
 # ── Virtual Scroll Telemetry ───────────────────────────────────────────────
@@ -186,9 +199,10 @@ COMPUTED_STYLE_EXTRACTOR = """() => {
 }"""
 
 
-def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
+def scrape_site(url: str, site_id: str) -> dict:
     """
-    Capture everything: screenshots, video, motion code, metadata.
+    Capture: screenshots, motion code, metadata.
+    No video recording — 2 screenshots are sufficient for the taste model.
     Returns a summary dict. Raises on total failure.
     """
     site_dir = DATA_DIR / site_id
@@ -206,9 +220,6 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             "Chrome/127.0.0.0 Safari/537.36"
         ),
     }
-    if record_video and not has_media:
-        context_options["record_video_dir"] = str(site_dir)
-        context_options["record_video_size"] = VIEWPORT
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -220,7 +231,7 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             page.add_init_script(GSAP_INTERCEPTOR)
 
             console.print(f"[cyan]→ Loading[/cyan] {url}")
-            page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            page.goto(url, wait_until="domcontentloaded", timeout=90000)
 
             # Start Virtual Scroll Observer
             page.evaluate(VIRTUAL_SCROLL_OBSERVER)
@@ -248,9 +259,11 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
                 time.sleep(1)  # Let layout reflow after dismissal
 
             # ── Step 2: Hero screenshot (clean, no overlays) ───────────────
-            # We take this BEFORE any scrolling because Awwwards sites heavily
-            # use Locomotive/Lenis scroll hijacking which breaks scrollTo(0,0).
+            # CRITICAL: Scroll to absolute top before capturing — scroll-restoration
+            # on page load can offset the hero on scroll-hijacked sites.
             if not has_media:
+                page.evaluate("window.scrollTo(0, 0)")
+                time.sleep(0.5)
                 page.screenshot(
                     path=str(site_dir / "screenshot_hero.png"),
                     clip={"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]},
@@ -259,7 +272,17 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             # ── Step 3: Pre-scroll pass (triggers lazy loading) ───────────
             # Scroll through the whole page quickly to trigger lazy-loaded
             # images/sections, then scroll back to top for clean screenshots
-            page_height = page.evaluate("() => document.body.scrollHeight")
+            # Use robust height measurement — scroll libraries often return 0
+            # for document.body.scrollHeight, so we check multiple sources.
+            page_height = page.evaluate("""() => {
+                return Math.max(
+                    document.body.scrollHeight,
+                    document.body.offsetHeight,
+                    document.documentElement.clientHeight,
+                    document.documentElement.scrollHeight,
+                    document.documentElement.offsetHeight
+                );
+            }""")
             _lazy_load_pass(page, page_height)
 
             # Scroll back to top
@@ -270,41 +293,7 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             _dismiss_overlays(page)
             time.sleep(0.5)
 
-            # ── Step 4: Scroll interaction for video recording ─────────────
-            # Use mouse.wheel to naturally trigger Locomotive/Lenis/GSAP ScrollTrigger.
-            if not has_media:
-                console.print(f"[dim]  ↳ Recording interaction (max {SCROLL_DURATION}s)...[/dim]")
-                
-                page.mouse.move(VIEWPORT["width"] // 2, VIEWPORT["height"] // 2)
-                
-                scroll_start_time = time.time()
-                last_scroll_y = -1
-                stall_count = 0
-                
-                while time.time() - scroll_start_time < SCROLL_DURATION:
-                    page.mouse.wheel(delta_x=0, delta_y=SCROLL_SPEED)
-                    time.sleep(SCROLL_PAUSE)
-                    
-                    # Check native scroll position to break early if we hit the bottom of a normal page
-                    current_y = page.evaluate("window.scrollY")
-                    if current_y == last_scroll_y and current_y > 0:
-                        stall_count += 1
-                    else:
-                        stall_count = 0
-                        
-                    last_scroll_y = current_y
-                    
-                    # If native scroll hasn't moved for 10 ticks (and we aren't at the top), we might be at the bottom.
-                    # However, custom scroll containers keep window.scrollY at 0, so stall_count will stay 0.
-                    if stall_count > 10:
-                        break
-
-                time.sleep(1)
-            else:
-                console.print(f"[dim]  ↳ Skipping slow scroll (media exists), doing fast pass...[/dim]")
-                _lazy_load_pass(page, page_height)
-
-            # ── Step 5: Hover over nav links (triggers hover states) ───────
+            # ── Step 4: Hover over nav links (triggers hover states) ───────
             nav_links = page.query_selector_all("nav a, header a, [role='navigation'] a")
             for link in nav_links[:5]:
                 try:
@@ -317,12 +306,30 @@ def scrape_site(url: str, site_id: str, record_video: bool = True) -> dict:
             page.evaluate("window.scrollTo(0, 0)")
             time.sleep(1)
 
-            # ── Step 6: Full page screenshot ───────────────────────────────
-            if not has_media:
-                page.screenshot(
-                    path=str(site_dir / "screenshot_full.png"),
-                    full_page=True,
-                )
+            # ── Step 5: Full page screenshot ───────────────────────────────
+            # Always re-capture full page — scroll library neutralization
+            # may work differently each time, and we need a correct capture.
+            # Use stitched capture for scroll-hijacked sites (most reliable).
+            # Falls back to full_page=True, then to hero screenshot.
+            try:
+                stitched_height = _capture_full_page_stitched(page, site_dir)
+            except Exception as e:
+                console.print(f"  [dim]  ↳ Stitched capture failed: {e}[/dim]")
+                stitched_height = None
+
+            if not stitched_height:
+                try:
+                    # Fallback: full_page=True for non-scroll-hijacked sites
+                    _neutralize_scroll_libraries(page)
+                    page.screenshot(
+                        path=str(site_dir / "screenshot_full.png"),
+                        full_page=True,
+                    )
+                except Exception as e:
+                    # Last resort: copy hero screenshot as full page
+                    console.print(f"  [dim]  ↳ Full page failed, using hero: {e}[/dim]")
+                    import shutil
+                    shutil.copy(site_dir / "screenshot_hero.png", site_dir / "screenshot_full.png")
 
             # ── Extract metadata ───────────────────────────────────────────
             title = page.title()
@@ -397,6 +404,8 @@ def _dismiss_overlays(page) -> int:
     """
     def _try_native_click(el, p):
         try:
+            # Same-frame measure + click — bounding box can shift between
+            # measurement and click due to parallax on scroll-hijacked sites.
             box = el.bounding_box()
             if box:
                 x = box["x"] + box["width"] / 2
@@ -408,6 +417,26 @@ def _dismiss_overlays(page) -> int:
                 el.click(timeout=1000)
                 return True
         except Exception:
+            # Fallback: CDP dispatch for stubborn gates that don't respond
+            # to Playwright clicks (pointer-events:none overlays, canvas
+            # event listeners that stopPropagation, etc.)
+            try:
+                box = el.bounding_box()
+                if box:
+                    x = box["x"] + box["width"] / 2
+                    y = box["y"] + box["height"] / 2
+                    cdp = p.context.new_cdp_session(p)
+                    cdp.send("Input.dispatchMouseEvent", {
+                        "type": "mousePressed", "x": x, "y": y,
+                        "button": "left", "clickCount": 1
+                    })
+                    cdp.send("Input.dispatchMouseEvent", {
+                        "type": "mouseReleased", "x": x, "y": y,
+                        "button": "left", "clickCount": 1
+                    })
+                    return True
+            except Exception:
+                pass
             return False
 
     dismissed = 0
@@ -542,6 +571,268 @@ def _dismiss_overlays(page) -> int:
     return dismissed
 
 
+def _neutralize_scroll_libraries(page) -> int | None:
+    """
+    Neutralize Locomotive/Lenis before full-page screenshot.
+    full_page=True produces broken stitches on scroll-hijacked sites
+    because the library transforms the body and constrains height.
+
+    Strategy: destroy the library, inject CSS to force body expansion,
+    then measure and set explicit height.
+
+    Returns the measured content height, or None if neutralization failed.
+    """
+    try:
+        # Step 1: Destroy scroll libraries and inject CSS to force expansion
+        page.evaluate("""
+            () => {
+                // Destroy Locomotive Scroll
+                if (window.locomotive) {
+                    try { window.locomotive.destroy(); } catch(e) {}
+                }
+                // Destroy Lenis
+                if (window.lenis) {
+                    try { window.lenis.destroy(); } catch(e) {}
+                }
+
+                // Inject CSS to force body expansion
+                const style = document.createElement('style');
+                style.id = 'taste-force-expand';
+                style.textContent = `
+                    html, body {
+                        height: auto !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                        transform: none !important;
+                    }
+                    [data-scroll-container], [data-scroll-section] {
+                        height: auto !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                        transform: none !important;
+                    }
+                    * {
+                        transform: none !important;
+                    }
+                `;
+                document.head.appendChild(style);
+
+                // Scroll to absolute top
+                window.scrollTo(0, 0);
+            }
+        """)
+        time.sleep(1)
+
+        # Step 2: Scroll to bottom to trigger lazy loading
+        page.evaluate("""
+            () => {
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        """)
+        time.sleep(1.5)
+
+        # Step 3: Measure actual content height and set body height explicitly
+        actual_height = page.evaluate("""
+            () => {
+                // Measure the actual content height by checking all elements
+                let maxBottom = 0;
+                const elements = document.querySelectorAll('body *');
+                for (let i = 0; i < elements.length; i++) {
+                    const rect = elements[i].getBoundingClientRect();
+                    if (rect.bottom > maxBottom) {
+                        maxBottom = rect.bottom;
+                    }
+                }
+                // Also check documentElement
+                const docHeight = document.documentElement.scrollHeight;
+                const height = Math.max(maxBottom, docHeight, window.scrollY + window.innerHeight);
+
+                // Set body height explicitly
+                document.body.style.height = height + 'px';
+                document.documentElement.style.height = height + 'px';
+
+                // Scroll back to top
+                window.scrollTo(0, 0);
+
+                return Math.round(height);
+            }
+        """)
+        time.sleep(0.5)
+
+        if actual_height and actual_height > 900:
+            console.print(f"  [dim]  ↳ Full page height: {actual_height}px (viewport was 900px)[/dim]")
+            return actual_height
+
+    except Exception as e:
+        console.print(f"  [dim]  ↳ Scroll neutralization error: {e}[/dim]")
+
+    return None
+
+
+def _capture_full_page_stitched(page, site_dir: Path) -> int | None:
+    """
+    Capture full-page screenshot by stitching viewport screenshots.
+    This is the most reliable approach for scroll-hijacked sites (Locomotive/Lenis)
+    where full_page=True and clip don't work.
+
+    Returns the total page height, or None if capture failed.
+    """
+    try:
+        # Step 1: Neutralize scroll libraries and measure height
+        actual_height = _neutralize_scroll_libraries(page)
+        if not actual_height or actual_height <= 900:
+            return None
+
+        # Step 2: Capture viewport screenshots at different scroll positions
+        viewport_h = 900
+        screenshots = []
+        scroll_y = 0
+
+        while scroll_y < actual_height:
+            page.evaluate(f"window.scrollTo(0, {scroll_y})")
+            time.sleep(0.3)  # Let content settle
+
+            screenshot_path = site_dir / f"_stitched_{scroll_y}.png"
+            page.screenshot(path=str(screenshot_path))
+            screenshots.append((scroll_y, screenshot_path))
+
+            scroll_y += viewport_h
+
+        # Step 3: Stitch screenshots together using PIL (memory-efficient)
+        from PIL import Image
+
+        # Create the stitched image
+        stitched = Image.new('RGB', (1440, actual_height))
+
+        for scroll_pos, path in screenshots:
+            img = Image.open(path)
+            try:
+                # Calculate where this image should be placed
+                if scroll_pos + viewport_h > actual_height:
+                    # This is the last image — crop it to fit
+                    remaining = actual_height - scroll_pos
+                    if remaining > 0:
+                        img = img.crop((0, 0, 1440, remaining))
+                        stitched.paste(img, (0, scroll_pos))
+                else:
+                    stitched.paste(img, (0, scroll_pos))
+            finally:
+                img.close()  # Free memory immediately
+
+        # Save the stitched image
+        stitched.save(site_dir / "screenshot_full.png")
+        stitched.close()
+
+        # Clean up temporary screenshots
+        for _, path in screenshots:
+            try:
+                path.unlink()
+            except Exception:
+                pass
+
+        console.print(f"  [dim]  ↳ Stitched full page: {actual_height}px ({len(screenshots)} captures)[/dim]")
+        return actual_height
+
+    except Exception as e:
+        console.print(f"  [dim]  ↳ Stitched capture error: {e}[/dim]")
+        return None
+    """
+    Neutralize Locomotive/Lenis before full-page screenshot.
+    full_page=True produces broken stitches on scroll-hijacked sites
+    because the library transforms the body and constrains height.
+
+    Strategy: destroy the library, inject CSS to force body expansion,
+    then measure and set explicit height.
+
+    Returns the measured content height, or None if neutralization failed.
+    """
+    try:
+        # Step 1: Destroy scroll libraries and inject CSS to force expansion
+        page.evaluate("""
+            () => {
+                // Destroy Locomotive Scroll
+                if (window.locomotive) {
+                    try { window.locomotive.destroy(); } catch(e) {}
+                }
+                // Destroy Lenis
+                if (window.lenis) {
+                    try { window.lenis.destroy(); } catch(e) {}
+                }
+
+                // Inject CSS to force body expansion
+                const style = document.createElement('style');
+                style.id = 'taste-force-expand';
+                style.textContent = `
+                    html, body {
+                        height: auto !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                        transform: none !important;
+                    }
+                    [data-scroll-container], [data-scroll-section] {
+                        height: auto !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                        transform: none !important;
+                    }
+                    * {
+                        transform: none !important;
+                    }
+                `;
+                document.head.appendChild(style);
+
+                // Scroll to absolute top
+                window.scrollTo(0, 0);
+            }
+        """)
+        time.sleep(1)
+
+        # Step 2: Scroll to bottom to trigger lazy loading
+        page.evaluate("""
+            () => {
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        """)
+        time.sleep(1.5)
+
+        # Step 3: Measure actual content height and set body height explicitly
+        actual_height = page.evaluate("""
+            () => {
+                // Measure the actual content height by checking all elements
+                let maxBottom = 0;
+                const elements = document.querySelectorAll('body *');
+                for (let i = 0; i < elements.length; i++) {
+                    const rect = elements[i].getBoundingClientRect();
+                    if (rect.bottom > maxBottom) {
+                        maxBottom = rect.bottom;
+                    }
+                }
+                // Also check documentElement
+                const docHeight = document.documentElement.scrollHeight;
+                const height = Math.max(maxBottom, docHeight, window.scrollY + window.innerHeight);
+
+                // Set body height explicitly
+                document.body.style.height = height + 'px';
+                document.documentElement.style.height = height + 'px';
+
+                // Scroll back to top
+                window.scrollTo(0, 0);
+
+                return Math.round(height);
+            }
+        """)
+        time.sleep(0.5)
+
+        if actual_height and actual_height > 900:
+            console.print(f"  [dim]  ↳ Full page height: {actual_height}px (viewport was 900px)[/dim]")
+            return actual_height
+
+    except Exception as e:
+        console.print(f"  [dim]  ↳ Scroll neutralization error: {e}[/dim]")
+
+    return None
+
+
 def _lazy_load_pass(page, page_height: int) -> None:
     """
     Fast scroll pass to trigger lazy-loaded images and components.
@@ -671,16 +962,15 @@ SITES = [
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="TASTE Scraper")
-    parser.add_argument("--no-video", action="store_true", help="Skip video recording")
     parser.add_argument("--site", help="Scrape a single URL (e.g. --site https://example.invalid/ --id site-099)")
     parser.add_argument("--id", help="Site ID for --site flag")
     args = parser.parse_args()
 
     if args.site and args.id:
-        scrape_site(args.site, args.id, record_video=not args.no_video)
+        scrape_site(args.site, args.id)
     else:
         for site in SITES:
             # We re-run scrape_site for all sites to inject the DOM extractor.
-            # has_media check inside scrape_site will ensure we don't redownload massive images/videos.
-            scrape_site(site["url"], site["id"], record_video=not args.no_video)
+            # has_media check inside scrape_site will ensure we don't redownload massive images.
+            scrape_site(site["url"], site["id"])
             time.sleep(1)  # be polite to servers
