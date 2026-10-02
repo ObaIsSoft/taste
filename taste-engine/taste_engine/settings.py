@@ -194,6 +194,28 @@ class CaptureSettings(BaseModel):
     reel: ReelSettings = Field(default_factory=ReelSettings)
 
 
+class AnalysisSettings(BaseModel):
+    thumb_width: int = 360  # stills are measured at this width
+    background_quant: int = 16  # colour bin size when finding the background colour
+    background_tolerance: float = 24.0  # RGB distance that still counts as background
+    palette_size: int = 8
+    edge_threshold: float = 40.0  # luminance step that counts as an edge
+    midline_tie_px: int = 8  # boxes centred this close to the middle count half on each side
+    spacing_unit_px: int = 4  # spacing values on this grid count as regular
+
+
+class ClaudeSettings(BaseModel):
+    """Claude API use: descriptions now, the baseline judge and page generation later."""
+
+    describe_model: str = "claude-opus-5-5"
+    describe_effort: str = "low"
+    describe_max_tokens: int = 4000
+    image_max_width: int = 1024
+    image_quality: int = 85
+    batch_max_bytes: int = 200_000_000  # the Batch API limit is 256 MB
+    batch_poll_s: float = 60.0
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="TASTE_",
@@ -203,13 +225,20 @@ class Settings(BaseSettings):
     )
 
     capture_version: str = "2.0.0"
+    analysis_version: str = "2.0.0"
     data_dir: Path = PROJECT_ROOT / "data"
     manifest_path: Path = PROJECT_ROOT / "manifest" / "sites.csv"
     capture: CaptureSettings = Field(default_factory=CaptureSettings)
+    analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
+    claude: ClaudeSettings = Field(default_factory=ClaudeSettings)
 
     @property
     def captures_dir(self) -> Path:
         return self.data_dir / "captures"
+
+    @property
+    def state_dir(self) -> Path:
+        return self.data_dir / "state"
 
     def capture_dir(self, capture_id: str) -> Path:
         return self.captures_dir / capture_id

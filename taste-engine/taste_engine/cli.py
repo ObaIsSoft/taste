@@ -6,9 +6,12 @@ import argparse
 import logging
 from pathlib import Path
 
-from taste_engine import manifest
+import anthropic
+
+from taste_engine import describe, manifest
+from taste_engine.analysis import features
 from taste_engine.capture import runner, site
-from taste_engine.schemas import CaptureStatus, Cohort, Variant
+from taste_engine.schemas import CaptureStatus, Cohort, Variant, capture_id
 from taste_engine.settings import get_settings
 
 log = logging.getLogger("taste")
@@ -86,6 +89,41 @@ def _cmd_capture_one(args: argparse.Namespace) -> int:
     return 0 if record.status == CaptureStatus.OK else 2
 
 
+def _capture_ids(args: argparse.Namespace) -> list[str] | None:
+    if not args.ids:
+        return None
+    variants = [Variant(v) for v in args.variants.split(",")]
+    return [capture_id(i, v) for i in parse_ids(args.ids) for v in variants]
+
+
+def _cmd_analyze(args: argparse.Namespace) -> int:
+    count = features.analyse_all(get_settings(), _capture_ids(args), force=args.force)
+    log.info("analysed %d captures", count)
+    return 0
+
+
+def _cmd_describe(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    client = anthropic.Anthropic()
+    if not args.collect_only:
+        describe.submit(settings, client, _capture_ids(args), force=args.force)
+    if args.no_wait:
+        return 0
+    counts = describe.collect(settings, client, wait=True)
+    log.info("described %d, %d to retry", counts["described"], counts["retry_later"])
+    return 0
+
+
+def _add_capture_selection(command: argparse.ArgumentParser) -> None:
+    command.add_argument("--ids", help='site ids, e.g. "1-14,20"')
+    command.add_argument(
+        "--variants",
+        default=Variant.ORIGINAL.value,
+        help="comma-separated: " + ",".join(v.value for v in Variant),
+    )
+    command.add_argument("--force", action="store_true", help="redo finished work")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="taste")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -106,16 +144,22 @@ def build_parser() -> argparse.ArgumentParser:
     show.set_defaults(func=_cmd_manifest_show)
 
     capture = commands.add_parser("capture", help="capture sites (resumable, parallel)")
-    capture.add_argument("--ids", help='site ids, e.g. "1-14,20"')
+    _add_capture_selection(capture)
     capture.add_argument("--cohort", choices=[c.value for c in Cohort])
     capture.add_argument("--limit", type=int)
-    capture.add_argument(
-        "--variants",
-        default=Variant.ORIGINAL.value,
-        help="comma-separated: " + ",".join(v.value for v in Variant),
-    )
-    capture.add_argument("--force", action="store_true", help="re-capture finished sites")
     capture.set_defaults(func=_cmd_capture)
+
+    analyze = commands.add_parser("analyze", help="compute features.json for captures")
+    _add_capture_selection(analyze)
+    analyze.set_defaults(func=_cmd_analyze)
+
+    describe_cmd = commands.add_parser(
+        "describe", help="factual Claude descriptions of hero stills (Batch API)"
+    )
+    _add_capture_selection(describe_cmd)
+    describe_cmd.add_argument("--no-wait", action="store_true", help="submit and return")
+    describe_cmd.add_argument("--collect-only", action="store_true", help="only collect results")
+    describe_cmd.set_defaults(func=_cmd_describe)
 
     one = commands.add_parser("capture-one", help="capture one site in this process")
     one.add_argument("--site-id", type=int, required=True)
