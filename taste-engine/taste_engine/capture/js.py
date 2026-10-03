@@ -330,30 +330,64 @@ BLOCKING_OVERLAY = r"""([coverRatio, maxControls, maxChars]) => {
     const r = el.getBoundingClientRect();
     return r.width >= vw * 0.9 && r.height >= vh * 0.9;
   };
+  // Every fixed or absolute layer covering the screen at a point counts, not only the innermost:
+  // a gate is often a backdrop and a box side by side inside one wrapper.
   for (let i = 1; i <= grid; i++) {
     for (let j = 1; j <= grid; j++) {
       let n = document.elementFromPoint((vw * i) / (grid + 1), (vh * j) / (grid + 1));
       for (; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
         const position = getComputedStyle(n).position;
-        if ((position === 'fixed' || position === 'absolute') && covers(n)) break;
+        if ((position === 'fixed' || position === 'absolute') && covers(n)) hits.set(n, (hits.get(n) || 0) + 1);
       }
-      if (n && n !== document.body && n !== document.documentElement) hits.set(n, (hits.get(n) || 0) + 1);
     }
   }
-  let layer = null, best = 0;
-  for (const [el, count] of hits) if (count > best) { layer = el; best = count; }
-  if (!layer || best < coverRatio * grid * grid) return null;
   const shown = (el) => {
     const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
   };
-  const controls = [...layer.querySelectorAll(
-    'a, button, [role="button"], input[type="submit"], input[type="button"]')].filter(shown);
-  const text = (layer.innerText || '').replace(/\s+/g, ' ').trim();
-  if (!controls.length || controls.length > maxControls || text.length > maxChars) return null;
+  const depth = (el) => { let d = 0; for (; el; el = el.parentElement) d += 1; return d; };
+  let layer = null, text = '';
+  for (const [el, count] of hits) {
+    if (count < coverRatio * grid * grid) continue;
+    const controls = [...el.querySelectorAll(
+      'a, button, [role="button"], input[type="submit"], input[type="button"]')].filter(shown);
+    const words = (el.innerText || '').replace(/\s+/g, ' ').trim();
+    if (!controls.length || controls.length > maxControls || words.length > maxChars) continue;
+    if (!layer || depth(el) > depth(layer)) { layer = el; text = words; }  // the most specific
+  }
+  if (!layer) return null;
   layer.setAttribute('data-taste-gate', '');
   return { text: text.slice(0, 300) };
 }"""
+FIND_POPUP = r"""([minArea, maxControls]) => {
+  for (const old of document.querySelectorAll('[data-taste-popup]')) old.removeAttribute('data-taste-popup');
+  const vw = innerWidth, vh = innerHeight;
+  const shown = (el) => {
+    const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.05
+      && r.width > 0 && r.height > 0;
+  };
+  let best = null;
+  for (const el of document.querySelectorAll('body *')) {
+    const dialog = el.matches('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]');
+    const cs = getComputedStyle(el);
+    if ((!dialog && cs.position !== 'fixed') || !shown(el)) continue;
+    const r = el.getBoundingClientRect();
+    const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+    const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+    if ((w * h) / (vw * vh) < minArea) continue;
+    if (!dialog && r.width >= vw * 0.9 && r.height <= vh * 0.25) continue;  // a header or footer bar
+    const controls = [...el.querySelectorAll(
+      'a, button, [role="button"], input[type="submit"], input[type="button"]')].filter(shown);
+    if (!controls.length || controls.length > maxControls) continue;
+    const z = parseInt(cs.zIndex, 10) || 0;
+    if (!best || z > best.z) best = { el, z };
+  }
+  if (!best) return null;
+  best.el.setAttribute('data-taste-popup', '');
+  return { text: (best.el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 300) };
+}"""
+POPUP_GONE = "() => { const el = document.querySelector('[data-taste-popup]'); if (!el) return true; const cs = getComputedStyle(el), r = el.getBoundingClientRect(); return cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) <= 0.05 || r.width === 0 || r.height === 0; }"
 SCROLL_INNER = r"""(distance) => {
   let best = null, area = 0;
   for (const el of document.querySelectorAll('body *')) {

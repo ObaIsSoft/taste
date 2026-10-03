@@ -18,7 +18,7 @@ from supabase import Client, create_client
 from taste_engine import manifest
 from taste_engine.analysis.features import FEATURES_FILE
 from taste_engine.capture import store
-from taste_engine.describe import DESCRIPTION_FILE
+from taste_engine.describe import DESCRIPTION_FILE, is_clean
 from taste_engine.schemas import CaptureRecord, CaptureStatus, Variant
 from taste_engine.settings import Settings
 
@@ -72,14 +72,18 @@ def capture_row(
     }
 
 
-def votable(record: CaptureRecord | None) -> bool:
-    """Only originals that passed QA go online: twins are labelled without votes and stay local,
-    and media nobody will see would only use up the free storage."""
+def votable(
+    record: CaptureRecord | None, description: dict[str, Any] | None, settings: Settings
+) -> bool:
+    """Only originals that passed QA, and that Claude saw as a live, uncovered page, go online.
+    Twins are labelled without votes and stay local, and media nobody will see would only use
+    up the free storage."""
     return (
         record is not None
         and record.status == CaptureStatus.OK
         and record.variant is Variant.ORIGINAL
         and record.quality.passed
+        and (is_clean(description) or not settings.publish_requires_description)
     )
 
 
@@ -92,7 +96,8 @@ def publish(settings: Settings, db: Client, capture_ids: list[str] | None = None
         if capture_ids is not None and directory.name not in capture_ids:
             continue
         record = store.read_record(directory)
-        if not votable(record):
+        described = _optional_json(directory / DESCRIPTION_FILE) or {}
+        if not votable(record, described.get("description"), settings):
             continue
         entry = entries[record.site_id]
         db.table("sites").upsert(
@@ -120,6 +125,24 @@ def add_voter(db: Client, name: str) -> str:
     code = secrets.token_urlsafe(9)
     db.table("voters").insert({"name": name, "invite_code": code}).execute()
     return code
+
+
+def exclude_capture(db: Client, capture_id: str, reason: str) -> bool:
+    """Take a capture out of the voting pool for good: its qa_note keeps it out on re-publish.
+    Votes already cast on it stay. Returns whether the capture exists."""
+    rows = (
+        db.table("captures")
+        .update({"in_pool": False, "qa_note": reason})
+        .eq("id", capture_id)
+        .execute()
+        .data
+    )
+    return bool(rows)
+
+
+def disable_voter(db: Client, name: str) -> int:
+    """Switch a voter off: their invite code stops working, their votes stay. Returns how many."""
+    return len(db.table("voters").update({"active": False}).eq("name", name).execute().data)
 
 
 def list_voters(db: Client) -> list[dict[str, Any]]:

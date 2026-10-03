@@ -41,7 +41,10 @@ class FakeDB:
         return SimpleNamespace(data=[{"qa_note": note}] if self._filter else [])
 
 
-def _capture(settings, site_id, variant=Variant.ORIGINAL, passed=True):
+CLEAN = {"obstruction": "none", "page_state": "live_site"}
+
+
+def _capture(settings, site_id, variant=Variant.ORIGINAL, passed=True, description=CLEAN):
     record = CaptureRecord(
         capture_id=f"{site_id:04d}-{variant.value}",
         site_id=site_id,
@@ -62,21 +65,27 @@ def _capture(settings, site_id, variant=Variant.ORIGINAL, passed=True):
     (directory / "screen-1.jpg").write_bytes(b"jpg")
     (directory / "reel.mp4").write_bytes(b"mp4")
     store.write_record(record, directory)
+    if description is not None:
+        store.write_json(directory / "description.json", {"description": description})
 
 
 def test_publish_puts_only_votable_originals_online(tmp_path):
     settings = Settings(data_dir=tmp_path, manifest_path=tmp_path / "sites.csv")
-    entries = manifest.entries_from_urls(
-        ["https://a.test/", "https://b.test/", "https://c.test/"], Cohort.AWARD, "t"
-    )
+    entries = manifest.entries_from_urls([f"https://{c}.test/" for c in "abcde"], Cohort.AWARD, "t")
     manifest.write_manifest(entries, settings.manifest_path)
     _capture(settings, 1)
     _capture(settings, 1, Variant.TYPOGRAPHY)
     _capture(settings, 2, passed=False)
     _capture(settings, 3)
+    _capture(
+        settings,
+        4,
+        description={"obstruction": "newsletter_or_offer_popup", "page_state": "live_site"},
+    )
+    _capture(settings, 5, description=None)  # Claude has not checked it yet
     fake = FakeDB(reported={"0003-original"})
 
-    assert db.publish(settings, fake) == 2  # the twin and the QA failure stay local
+    assert db.publish(settings, fake) == 2  # the twin, the QA failure and 4 and 5 stay local
     pooled = {row["id"]: row["in_pool"] for table, row in fake.upserts if table == "captures"}
     assert pooled == {
         "0001-original": True,

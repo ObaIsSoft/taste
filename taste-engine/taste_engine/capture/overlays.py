@@ -1,10 +1,13 @@
-"""Consent banners and intro, age and warning gates: exact, scoped clicks with a navigation guard.
+"""Consent banners, gates and pop-ups: exact, scoped clicks with a navigation guard.
 
-Text is matched exactly (case-insensitive), never as a substring, so "Enter"
-cannot hit "Enterprise". Consent buttons are only looked for inside consent
-containers. Gate answers are only looked for inside the layer that blocks the
-page: one that covers most of the screen, offers a few choices and stays on top
-when the page scrolls. Any click that leaves the page is undone and recorded.
+Text is matched exactly (case-insensitive, either apostrophe), never as a
+substring, so "Enter" cannot hit "Enterprise". Consent buttons are looked for
+inside consent containers. Gate answers are looked for inside the layer that
+blocks the page: one that covers the screen, offers a few choices and stays on
+top when the page scrolls. A smaller floating box (a newsletter offer, a cookie
+box without the usual names) is answered by what it says: accept for cookies,
+yes for an age question, otherwise "No thanks", "Close" or Escape. Any click
+that leaves the page is undone and recorded.
 """
 
 from __future__ import annotations
@@ -42,8 +45,19 @@ def same_page(url: str, other: str) -> bool:
     )
 
 
+def cued(text: str, cues: list[str]) -> bool:
+    """Whether any cue starts a word in the text ("alcol" finds "alcolici")."""
+    return any(re.search(rf"\b{re.escape(cue)}", text.lower()) for cue in cues)
+
+
 def _exact(text: str) -> re.Pattern[str]:
-    return re.compile(rf"^\s*{re.escape(text)}\s*$", re.IGNORECASE)
+    words = re.escape(text).replace("'", "['’]")  # "J'accepte" also matches "J’accepte"
+    return re.compile(rf"^\s*{words}\s*$", re.IGNORECASE)
+
+
+_CLOSE_LABEL = re.compile(
+    r"\b(close|dismiss|fermer|chiudi|cerrar|schlie(ß|ss)en|sluiten|fechar)\b", re.I
+)
 
 
 def _click(page: Page, locator: Locator, cfg: CaptureSettings) -> bool:
@@ -103,7 +117,12 @@ def _pass_gate(page: Page, cfg: CaptureSettings) -> str | None:
     if find_gate(page, cfg) is None:
         return None
     layer = page.locator("[data-taste-gate]")
-    for text in cfg.gate_texts:
+    answer = _answer(page, layer, cfg.gate_texts + cfg.dismiss_texts, cfg)
+    return f"gate:{answer}" if answer else None
+
+
+def _answer(page: Page, layer: Locator, texts: list[str], cfg: CaptureSettings) -> str | None:
+    for text in texts:
         pattern = _exact(text)
         for locator in (
             layer.get_by_role("button", name=pattern),
@@ -111,12 +130,54 @@ def _pass_gate(page: Page, cfg: CaptureSettings) -> str | None:
             layer.get_by_text(pattern),
         ):
             if locator.count() and _click(page, locator, cfg):
-                return f"gate:{text}"
+                return text
     return None
 
 
+def _close_popup(page: Page, cfg: CaptureSettings) -> str | None:
+    try:
+        popup = page.evaluate(js.FIND_POPUP, [cfg.popup_min_area, cfg.popup_max_controls])
+    except PlaywrightError:
+        return None
+    if popup is None:
+        return None
+    layer = page.locator("[data-taste-popup]")
+    text = popup["text"]
+    if cued(text, cfg.consent_cues):
+        texts = cfg.accept_texts
+    elif cued(text, cfg.gate_cues):
+        texts = cfg.gate_texts + cfg.dismiss_texts
+    else:
+        texts = cfg.dismiss_texts
+    answer = _answer(page, layer, texts, cfg)
+    if answer:
+        return f"popup:{answer}"
+    close = layer.get_by_role("button", name=_CLOSE_LABEL)  # an icon button labelled "Close"
+    if close.count() and _click(page, close, cfg):
+        return "popup:close"
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(cfg.settle_poll_s * 1000)
+    try:
+        return "popup:escape" if page.evaluate(js.POPUP_GONE) else None
+    except PlaywrightError:
+        return None
+
+
+def clear_popups(page: Page, cfg: CaptureSettings) -> list[str]:
+    """Answer cookie boxes and pop-ups that appeared late, without scrolling: run before
+    each still, so a newsletter offer on a timer never covers a screenshot."""
+    actions = []
+    for _ in range(cfg.overlay_rounds):
+        action = _accept_consent(page, cfg) or _close_popup(page, cfg)
+        if not action:
+            break
+        actions.append(action)
+        page.wait_for_timeout(cfg.settle_poll_s * 1000)
+    return actions
+
+
 def dismiss_overlays(page: Page, cfg: CaptureSettings) -> list[str]:
-    """Click through consent banners and gates. Returns the actions taken, in order.
+    """Click through consent banners, gates and pop-ups. Returns the actions taken, in order.
 
     A click that opened another page was not a way past an overlay: the browser goes
     back, the step is recorded, and no more clicks are tried.
@@ -124,7 +185,7 @@ def dismiss_overlays(page: Page, cfg: CaptureSettings) -> list[str]:
     actions: list[str] = []
     landed = page.url
     for _ in range(cfg.overlay_rounds):
-        action = _accept_consent(page, cfg) or _pass_gate(page, cfg)
+        action = _accept_consent(page, cfg) or _pass_gate(page, cfg) or _close_popup(page, cfg)
         if not action:
             break
         actions.append(action)

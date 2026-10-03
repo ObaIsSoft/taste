@@ -38,7 +38,7 @@ The project stays on free tiers. What that means in practice:
 - **Pausing.** Free projects pause after 7 days without requests. Between voting phases, open the
   site or run `taste voters list` at least weekly; a paused project is restored from the
   Supabase dashboard.
-- **No automatic backups.** During voting, export every night (see [Exports](#exports)).
+- **No automatic backups.** During voting, export after each voting day (see [Exports](#exports)).
 - **Vercel Hobby** is ample for a handful of designers.
 
 ## Database history
@@ -69,13 +69,17 @@ v1's site breaks the moment its tables are dropped, so these run back to back.
 2. **Apply the schema.** From `taste-engine/`, run
    `set -a; . ./.env; set +a; psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_v2_voting.sql`,
    or paste the file into the Supabase SQL editor.
-3. **Publish the pilot.** `taste analyze --ids "$(cat manifest/pilot-ids.txt)"`, then
-   `taste publish --ids "$(cat manifest/pilot-ids.txt)"`. This creates the private bucket on first
-   run.
-4. **Set calibration.**
-   - `taste calibrate --round visual --ids <14 sites>`
-   - `taste calibrate --round motion --ids <8 sites>`
-   - Record the chosen ids in the database history.
+3. **Check and publish the pilot.** Each step runs on every site the same way; there are no
+   per-site exceptions:
+   - `taste analyze --ids "$(cat manifest/pilot-ids.txt)"`
+   - `taste describe --ids "$(cat manifest/pilot-ids.txt)"`. This is Claude's check: it looks at
+     every still and reports anything covering the page, and whether the page is a live site.
+   - `taste publish --ids "$(cat manifest/pilot-ids.txt)"`. It only publishes captures that passed
+     QA and that Claude saw as clean, and it creates the private bucket on first run.
+4. **Set calibration.** The sites are picked automatically as the most varied voteable ones:
+   - `taste calibrate --round visual --pick 14`
+   - `taste calibrate --round motion --pick 8`
+   - Add `--dry-run` to see the picks first. Record the chosen ids in the database history.
 5. **Configure Vercel.** Set the Production variables listed above, then from `taste-engine/web` run
    `vercel --prod`.
 6. **Smoke test** (below).
@@ -105,8 +109,7 @@ delete from voters where name = 'smoke-test';
 
 - **Add a voter:** `taste voters add "Name"` prints their code and invite link.
 - **Re-send a lost link:** `taste voters list`.
-- **Switch a voter off:** run `update voters set active = false where name = 'Name';`. Their votes
-  stay; their code stops working.
+- **Switch a voter off:** `taste voters disable "Name"`. Their votes stay; their code stops working.
 
 ### During voting
 
@@ -120,17 +123,16 @@ delete from voters where name = 'smoke-test';
   after would not be comparable; designers' own words already catch anything the list misses.
 - **Re-capturing a site keeps its capture id.** Its votes stay attached. Note the new capture
   version in the database history.
+- **Take a capture out of the pool:** `taste captures exclude 0234-original --reason "..."`. The
+  reason is kept in its `qa_note`, which keeps it out on later publishes; votes already cast stay.
 
 ### Exports
 
 - **Every vote, plus which reels were played and which live sites opened:**
   `taste votes export` writes `data/votes/votes.jsonl` and `vote_events.jsonl`. The files are
   git-ignored; copy them somewhere safe.
-- **Nightly during voting,** for example with cron:
-
-```cron
-0 2 * * * cd ~/Documents/dev/dziner/taste-engine && .venv/bin/taste votes export
-```
+- **After each voting day,** run it by hand. There are no automatic backups on the free tier, and
+  no scheduled export is set up.
 
 ### Exporting v1
 

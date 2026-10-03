@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Late Offer Store</title>
+<style>
+  body { margin: 0; font-family: Helvetica, sans-serif; }
+  section { height: 900px; display: grid; place-items: center; font-size: 56px; }
+  section:nth-child(odd) { background: #dbeafe; } section:nth-child(even) { background: #fde68a; }
+  #offer { display: none; position: fixed; top: 50%; left: 50%; width: 420px; transform: translate(-50%, -50%);
+           padding: 28px; background: #fff; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3); z-index: 999; }
+  #offer.open { display: block; }
+  #offer .x { position: absolute; top: 8px; right: 8px; }
+</style>
+</head>
+<body>
+<main><section>New season</section><section>Shoes</section><section>Bags</section><section>Stores</section></main>
+<div id="offer" role="dialog" aria-label="Newsletter">
+  <button class="x" aria-label="Close">×</button>
+  <h2>You've got 10% off</h2>
+  <input type="email" placeholder="Email address">
+  <button>Sign up</button>
+  <a href="#" id="no-thanks">No thanks</a>
+</div>
+<script>
+  const offer = document.getElementById('offer');
+  window.addEventListener('scroll', () => { if (window.scrollY > 300 && !offer.dataset.seen) { offer.dataset.seen = '1'; offer.classList.add('open'); } });
+  document.getElementById('no-thanks').addEventListener('click', (event) => { event.preventDefault(); offer.classList.remove('open'); });
+  offer.querySelector('.x').addEventListener('click', () => offer.classList.remove('open'));
+</script>
+</body>
+</html>

@@ -1,9 +1,13 @@
-"""Factual descriptions of hero stills by Claude (the "eyes"), through the Batch API.
+"""Factual descriptions of captures by Claude (the "eyes"), through the Batch API.
 
-The model reports what is visible, never a verdict: the schema has no field for
-quality, and nearly every answer comes from a fixed list, so the output is
-always valid JSON. A capture whose request fails gets no description.json and
-is retried on the next run.
+The model sees every still of a capture and the site's domain. It describes the
+hero, and reports two checks across all stills: whether anything covers the page
+(a pop-up, a gate, a cookie notice) and whether the page is a live site at all.
+Publishing uses those two checks, so a capture the scraper could not clean up
+never reaches voters, with no site-by-site exceptions. It reports what is
+visible, never a verdict: the schema has no field for quality, and nearly every
+answer comes from a fixed list, so the output is always valid JSON. A capture
+whose request fails gets no description.json and is retried on the next run.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import anthropic
 from PIL import Image
@@ -34,7 +39,14 @@ SYSTEM_PROMPT = (
     "the image. Never judge quality, taste or effectiveness, and never use evaluative words such "
     "as clean, modern, premium, elegant or engaging."
 )
-USER_PROMPT = "This is the first screen of a website. Fill in every field from what is visible."
+USER_PROMPT = (
+    "These are the screens of {host}, top to bottom; the first is the hero. Describe the hero in "
+    "the descriptive fields. For obstruction and page_state, consider every screen: obstruction is "
+    "anything covering part of the page that a visitor would have to dismiss (sticky headers, "
+    "small chat buttons and the site's own design are not obstructions); page_state says whether "
+    "this is a live site for the domain."
+)
+CLEAN = {"obstruction": "none", "page_state": "live_site"}  # what publishing requires
 
 
 def _choice(*values: str) -> dict[str, Any]:
@@ -98,6 +110,23 @@ SCHEMA: dict[str, Any] = {
             ),
         },
         "text_over_image": {"type": "boolean"},
+        "obstruction": _choice(
+            "none",
+            "cookie_or_privacy_notice",
+            "newsletter_or_offer_popup",
+            "age_or_content_gate",
+            "loading_screen",
+            "location_or_language_chooser",
+            "other_overlay",
+        ),
+        "page_state": _choice(
+            "live_site",
+            "under_construction_or_coming_soon",
+            "closed_or_unavailable",
+            "parked_or_for_sale",
+            "error_or_blocked",
+            "unrelated_to_the_domain",
+        ),
         "notes": {"type": "string"},
     },
     "required": [
@@ -109,6 +138,8 @@ SCHEMA: dict[str, Any] = {
         "density",
         "visible_elements",
         "text_over_image",
+        "obstruction",
+        "page_state",
         "notes",
     ],
     "additionalProperties": False,
@@ -127,7 +158,15 @@ def _image_block(path: Path, cfg: ClaudeSettings) -> dict[str, Any]:
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
 
 
-def build_request(capture_id: str, hero: Path, cfg: ClaudeSettings) -> dict[str, Any]:
+def is_clean(description: dict[str, Any] | None) -> bool:
+    """Claude saw nothing covering the page, and a live site."""
+    return description is not None and all(description.get(k) == v for k, v in CLEAN.items())
+
+
+def build_request(
+    capture_id: str, stills: list[Path], host: str, cfg: ClaudeSettings
+) -> dict[str, Any]:
+    images = [_image_block(still, cfg) for still in stills]
     return {
         "custom_id": capture_id,
         "params": {
@@ -137,7 +176,7 @@ def build_request(capture_id: str, hero: Path, cfg: ClaudeSettings) -> dict[str,
             "messages": [
                 {
                     "role": "user",
-                    "content": [_image_block(hero, cfg), {"type": "text", "text": USER_PROMPT}],
+                    "content": [*images, {"type": "text", "text": USER_PROMPT.format(host=host)}],
                 }
             ],
             "output_config": {
@@ -174,10 +213,12 @@ def submit(
     capture_ids: list[str] | None = None,
     force: bool = False,
 ) -> list[str]:
-    requests = [
-        build_request(d.name, d / store.read_record(d).stills[0].file, settings.claude)
-        for d in pending_captures(settings, capture_ids, force)
-    ]
+    requests = []
+    for directory in pending_captures(settings, capture_ids, force):
+        record = store.read_record(directory)
+        stills = [directory / still.file for still in record.stills]
+        host = urlsplit(record.final_url or record.requested_url).hostname or ""
+        requests.append(build_request(directory.name, stills, host, settings.claude))
     return batches.submit(settings, client, JOB, requests)
 
 

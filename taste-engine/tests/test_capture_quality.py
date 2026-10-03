@@ -21,6 +21,7 @@ def _assess(**overrides):
         "hero_spread": 40.0,
         "consent_left": [],
         "gate_text": None,
+        "clicked": True,
         "reel_expected": True,
         "reel_ok": True,
     }
@@ -74,6 +75,21 @@ def test_a_down_site_is_not_called_blocked_but_a_challenge_is():
         http_status=503, title="Just a moment...", text_sample="checking your browser"
     )
     assert challenge.bot_block and not challenge.site_down
+
+
+def test_a_site_that_moves_on_by_itself_is_not_flagged():
+    intro = _assess(
+        landed_url="https://studio.example.com/",
+        final_url="https://studio.example.com/introduction/",
+        clicked=False,
+    )
+    assert intro.passed
+
+
+def test_a_closed_shopify_store_counts_as_parked():
+    assert _assess(
+        text_sample="This store is currently unavailable. Are you the store owner?"
+    ).parked
 
 
 def test_a_redirect_while_loading_is_fine_but_a_change_after_it_is_not():

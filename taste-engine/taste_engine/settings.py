@@ -83,6 +83,8 @@ class CaptureSettings(BaseModel):
     gate_cover_ratio: float = 0.6  # a fixed layer on top of this share of the screen blocks it
     gate_max_controls: int = 8  # a gate offers a few choices; more means it is the site itself
     gate_max_chars: int = 800  # ...and says little
+    popup_min_area: float = 0.03  # a floating box smaller than this share of the screen is left
+    popup_max_controls: int = 12  # more buttons than this is navigation, not a pop-up
     overlay_cover_ratio: float = 0.1  # consent UI this large left on screen fails QA
     accept_texts: list[str] = Field(
         default_factory=lambda: [
@@ -192,6 +194,44 @@ class CaptureSettings(BaseModel):
             "continua",
         ]
     )
+    # Ways out of a pop-up that is not a gate: newsletter offers, quizzes, notices.
+    dismiss_texts: list[str] = Field(
+        default_factory=lambda: [
+            "no thanks",
+            "no, thanks",
+            "no thank you",
+            "not now",
+            "maybe later",
+            "not interested",
+            "i'm not interested",
+            "dismiss",
+            "close",
+            "×",
+            "✕",
+            "x",
+            "continue without accepting",
+            "continuer sans accepter",
+            "chiudi",
+            "fermer",
+            "cerrar",
+            "schließen",
+            "sluiten",
+            "fechar",
+        ]
+    )
+    # Words that show a pop-up is about cookies, so its answer is an accept button.
+    consent_cues: list[str] = Field(
+        default_factory=lambda: [
+            "cookie",
+            "consent",
+            "privacy",
+            "gdpr",
+            "données",
+            "datenschutz",
+            "privacidad",
+            "riservatezza",
+        ]
+    )
     # Words that show a blocking layer is a gate, not a full-screen site.
     gate_cues: list[str] = Field(
         default_factory=lambda: [
@@ -265,6 +305,7 @@ class CaptureSettings(BaseModel):
             "parked free",
             "hugedomains",
             "sedo domain parking",
+            "this store is currently unavailable",
         ]
     )
     parked_paths: list[str] = Field(default_factory=lambda: ["/lander"])
@@ -343,7 +384,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    capture_version: str = "2.2.0"  # 2.2: smaller reels for the free tier
+    capture_version: str = "2.3.0"  # 2.3: pop-ups, backdrop gates, consent anywhere
     analysis_version: str = "2.1.0"  # 2.1: every capture metric reaches the features
     data_dir: Path = PROJECT_ROOT / "data"
     manifest_path: Path = PROJECT_ROOT / "manifest" / "sites.csv"
@@ -356,6 +397,8 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("SUPABASE_SERVICE_KEY", "SUPABASE_KEY")
     )
     storage_bucket: str = "captures"  # private: the voting API hands out signed URLs
+    # Claude's check that nothing covers the page and it is a live site (taste describe)
+    publish_requires_description: bool = True
     voting_url: str | None = None  # the deployed voting site, for invite links
 
     @property

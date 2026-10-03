@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier</title>
+<style>
+  body { margin: 0; font-family: Georgia, serif; }
+  section { height: 900px; display: grid; place-items: center; font-size: 56px; }
+  section:nth-child(odd) { background: #f5f5f4; } section:nth-child(even) { background: #e7e5e4; }
+  #box { position: fixed; left: 24px; bottom: 24px; width: 380px; padding: 20px; background: #fff;
+         border: 1px solid #ccc; z-index: 2147483647; font-size: 14px; }
+</style>
+</head>
+<body>
+<main><section>Atelier</section><section>Collections</section><section>Journal</section><section>Contact</section></main>
+<div id="box">
+  <p>Nous utilisons des cookies pour mesurer l’audience de ce site.</p>
+  <button>Paramétrer</button>
+  <button id="accept">J’accepte</button>
+</div>
+<script>
+  document.getElementById('accept').addEventListener('click', () => document.getElementById('box').remove());
+</script>
+</body>
+</html>

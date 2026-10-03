@@ -8,7 +8,7 @@ from pathlib import Path
 
 import anthropic
 
-from taste_engine import agreement, db, describe, manifest
+from taste_engine import agreement, calibration, db, describe, manifest
 from taste_engine.analysis import features
 from taste_engine.capture import runner, site
 from taste_engine.schemas import CaptureStatus, Cohort, Round, Variant, capture_id
@@ -128,14 +128,24 @@ def _cmd_publish(args: argparse.Namespace) -> int:
 
 def _cmd_calibrate(args: argparse.Namespace) -> int:
     settings = get_settings()
-    ids = _capture_ids(args)
-    if not ids:
-        log.error("pass --ids with the calibration sites")
+    if not args.ids and not args.pick:
+        log.error("pass --ids with the calibration sites, or --pick N to choose the most varied")
         return 1
-    client = db.connect(settings)
+    client = None if args.dry_run else db.connect(settings)
     for round_kind in list(Round) if args.round == "both" else [Round(args.round)]:
-        count = db.create_calibration(client, round_kind.value, ids)
-        log.info("%s calibration set: %d pairs from %d captures", round_kind, count, len(ids))
+        ids = _capture_ids(args)
+        if args.pick:
+            pool = calibration.candidates(settings, round_kind)
+            if ids:
+                pool = {cid: vector for cid, vector in pool.items() if cid in ids}
+            if len(pool) < args.pick:
+                log.error("only %d %s candidates for %d sites", len(pool), round_kind, args.pick)
+                return 1
+            ids = calibration.pick(pool, args.pick)
+            print(f"{round_kind.value}: {','.join(ids)}")
+        if client is not None:
+            count = db.create_calibration(client, round_kind.value, ids)
+            log.info("%s calibration set: %d pairs from %d captures", round_kind, count, len(ids))
     return 0
 
 
@@ -149,6 +159,25 @@ def _cmd_voters_add(args: argparse.Namespace) -> int:
         print("set TASTE_VOTING_URL to also print an invite link that signs them in")
     print("Share it privately: it is their key.")
     return 0
+
+
+def _cmd_voters_disable(args: argparse.Namespace) -> int:
+    count = db.disable_voter(db.connect(get_settings()), args.name)
+    if not count:
+        log.error("no voter named %r", args.name)
+        return 1
+    print(f"{args.name}: switched off ({count}); their votes stay")
+    return 0
+
+
+def _cmd_captures_exclude(args: argparse.Namespace) -> int:
+    client = db.connect(get_settings())
+    missing = [cid for cid in args.capture_ids if not db.exclude_capture(client, cid, args.reason)]
+    for cid in missing:
+        log.error("no published capture %s", cid)
+    excluded = len(args.capture_ids) - len(missing)
+    print(f"excluded {excluded} capture(s) from the pool: {args.reason}")
+    return 1 if missing else 0
 
 
 def _cmd_voters_list(args: argparse.Namespace) -> int:
@@ -238,6 +267,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="both",
         help="both (the default) lets each voter's visual and motion verdicts be compared",
     )
+    calibrate.add_argument(
+        "--pick", type=int, help="choose this many of the most varied votable sites (or of --ids)"
+    )
+    calibrate.add_argument("--dry-run", action="store_true", help="show the choice; write nothing")
     calibrate.set_defaults(func=_cmd_calibrate)
 
     voters = commands.add_parser("voters", help="manage voters")
@@ -247,6 +280,16 @@ def build_parser() -> argparse.ArgumentParser:
     add.set_defaults(func=_cmd_voters_add)
     listing = voters_sub.add_parser("list", help="every voter with their invite link or code")
     listing.set_defaults(func=_cmd_voters_list)
+    disable = voters_sub.add_parser("disable", help="switch a voter off; their votes stay")
+    disable.add_argument("name")
+    disable.set_defaults(func=_cmd_voters_disable)
+
+    captures = commands.add_parser("captures", help="manage published captures")
+    captures_sub = captures.add_subparsers(dest="action", required=True)
+    exclude = captures_sub.add_parser("exclude", help="take captures out of the voting pool")
+    exclude.add_argument("capture_ids", nargs="+", metavar="capture_id", help="e.g. 0234-original")
+    exclude.add_argument("--reason", required=True, help="recorded in the capture's qa_note")
+    exclude.set_defaults(func=_cmd_captures_exclude)
 
     votes = commands.add_parser("votes", help="work with collected votes")
     votes_sub = votes.add_subparsers(dest="action", required=True)

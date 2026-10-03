@@ -67,3 +67,48 @@ def test_voters_list_prints_links_or_codes(monkeypatch, capsys):
     main(["voters", "list"])
     out = capsys.readouterr().out
     assert "Ada: abc" in out and "TASTE_VOTING_URL" in out
+
+
+class _Updates:
+    """Records update calls; rows match when the filtered value is in ``existing``."""
+
+    def __init__(self, existing):
+        self.existing, self.updates = set(existing), []
+
+    def table(self, name):
+        self.name = name
+        return self
+
+    def update(self, values):
+        self.values = values
+        return self
+
+    def eq(self, column, value):
+        self.match = value
+        return self
+
+    def execute(self):
+        hit = self.match in self.existing
+        if hit:
+            self.updates.append((self.name, self.match, self.values))
+        return SimpleNamespace(data=[{"id": self.match}] if hit else [])
+
+
+def test_captures_exclude_keeps_them_out_with_a_reason(monkeypatch, capsys):
+    fake = _Updates({"0234-original", "0852-original"})
+    monkeypatch.setattr(cli.db, "connect", lambda _settings: fake)
+    argv = ["captures", "exclude", "0234-original", "0852-original", "--reason", "offer pop-up"]
+    assert main(argv) == 0
+    assert fake.updates == [
+        ("captures", "0234-original", {"in_pool": False, "qa_note": "offer pop-up"}),
+        ("captures", "0852-original", {"in_pool": False, "qa_note": "offer pop-up"}),
+    ]
+    assert main(["captures", "exclude", "9999-original", "--reason", "x"]) == 1
+
+
+def test_voters_disable(monkeypatch):
+    fake = _Updates({"Frida"})
+    monkeypatch.setattr(cli.db, "connect", lambda _settings: fake)
+    assert main(["voters", "disable", "Frida"]) == 0
+    assert fake.updates == [("voters", "Frida", {"active": False})]
+    assert main(["voters", "disable", "Nobody"]) == 1

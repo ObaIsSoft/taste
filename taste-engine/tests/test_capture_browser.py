@@ -4,6 +4,7 @@ import json
 import subprocess
 
 import pytest
+from PIL import Image
 
 from taste_engine.capture import reel
 from taste_engine.capture.site import TOKENS_FILE, capture_site
@@ -114,3 +115,37 @@ def test_a_failed_transcode_keeps_the_capture(fixture_site_url, fast_settings, m
     assert record.status == CaptureStatus.OK, record.error
     assert record.quality.reel_missing and "transcode-failed" in record.overlay_actions
     assert len(record.stills) == 4
+
+
+def test_an_age_gate_whose_backdrop_sits_beside_its_box(fixture_site_url, fast_settings):
+    _stills_only(fast_settings)
+    record = _capture(_sibling(fixture_site_url, "age-modal.html"), fast_settings)
+
+    assert record.quality.passed, record.quality
+    assert "gate:yes" in record.overlay_actions
+    assert len(record.stills) == 4
+
+
+def test_a_cookie_box_without_the_usual_names_is_accepted(fixture_site_url, fast_settings):
+    _stills_only(fast_settings)
+    record = _capture(_sibling(fixture_site_url, "cookie-box.html"), fast_settings)
+
+    assert record.quality.passed, record.quality
+    assert "popup:j'accepte" in record.overlay_actions  # a curly apostrophe on the page
+
+
+def test_a_pop_up_that_appears_on_scroll_is_closed_before_the_next_still(
+    fixture_site_url, fast_settings
+):
+    _stills_only(fast_settings)
+    record = _capture(_sibling(fixture_site_url, "popup-late.html"), fast_settings)
+    folder = fast_settings.capture_dir(record.capture_id)
+
+    assert record.quality.passed, record.quality
+    assert "popup:no thanks" in record.overlay_actions
+    assert len(record.stills) == 4
+    # the offer is the only white on the page: no still may show it
+    for still in record.stills:
+        grey = Image.open(folder / still.file).convert("L")
+        white = sum(grey.histogram()[250:]) / (grey.width * grey.height)
+        assert white < 0.01, still.file

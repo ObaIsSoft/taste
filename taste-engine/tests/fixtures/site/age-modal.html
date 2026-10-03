@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Craft Cider</title>
+<style>
+  body { margin: 0; font-family: Helvetica, sans-serif; }
+  section { height: 900px; display: grid; place-items: center; font-size: 56px; }
+  section:nth-child(odd) { background: #14532d; color: #fff; } section:nth-child(even) { background: #fef3c7; }
+  .age_gate-wrapper { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; }
+  .age_gate-prefs_overlay { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.7); }
+  .age_gate-box { position: relative; background: #0f766e; color: #fff; padding: 32px; text-align: center; }
+  .age_gate-box a { color: #fff; margin: 0 12px; }
+</style>
+</head>
+<body>
+<main><section>Cider</section><section>Orchard</section><section>Stockists</section><section>Contact</section></main>
+<div class="age_gate-wrapper">
+  <div class="age_gate-prefs_overlay"></div>
+  <div class="age_gate-box">
+    <p>Before we start - are you over 18?</p>
+    <a href="#" id="yes">Yes</a><a href="#" id="no">No</a>
+  </div>
+</div>
+<script>
+  document.getElementById('yes').addEventListener('click', (event) => {
+    event.preventDefault();
+    document.querySelector('.age_gate-wrapper').remove();
+  });
+</script>
+</body>
+</html>

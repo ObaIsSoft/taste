@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-import re
 from urllib.parse import urlsplit
 
-from taste_engine.capture.overlays import same_page, same_site
+from taste_engine.capture.overlays import cued, same_page, same_site
 from taste_engine.schemas import QualityFlags
 from taste_engine.settings import CaptureSettings
 
 BLOCKED_STATUSES = frozenset({403, 429})
 GONE_STATUSES = frozenset({404, 410})
-
-
-def _cued(text: str, cues: list[str]) -> bool:
-    """Whether any cue starts a word in the text ("alcol" finds "alcolici")."""
-    return any(re.search(rf"\b{re.escape(cue)}", text) for cue in cues)
 
 
 def assess(
@@ -30,6 +24,7 @@ def assess(
     hero_spread: float | None,
     consent_left: list[str],
     gate_text: str | None,
+    clicked: bool,
     reel_expected: bool,
     reel_ok: bool,
 ) -> QualityFlags:
@@ -41,10 +36,15 @@ def assess(
     )
     server_error = http_status is not None and http_status >= 500
     paths = {urlsplit(u).path.rstrip("/") for u in (landed_url, final_url) if u}
+    # A page change counts only when our clicks caused it; a site that moves on by itself
+    # (an intro that hands over to the home page) is showing its own flow.
     moved_on = (
-        final_url is not None and landed_url is not None and not same_page(final_url, landed_url)
+        clicked
+        and final_url is not None
+        and landed_url is not None
+        and not same_page(final_url, landed_url)
     )
-    gate = gate_text is not None and _cued(gate_text.lower(), cfg.gate_cues)
+    gate = gate_text is not None and cued(gate_text, cfg.gate_cues)
     notes = [f"consent still visible: {selector}" for selector in consent_left]
     if moved_on:
         notes.append(f"page changed after load: {landed_url} -> {final_url}")

@@ -22,7 +22,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from taste_engine.capture import degrade, js, store, visual
 from taste_engine.capture.browser import launch, new_context
-from taste_engine.capture.overlays import dismiss_overlays, find_gate
+from taste_engine.capture.overlays import clear_popups, dismiss_overlays, find_gate
 from taste_engine.capture.quality import assess
 from taste_engine.capture.reel import REEL_FILE, Reel, record_reel
 from taste_engine.schemas import (
@@ -117,7 +117,11 @@ def _next_screen(page: Page, cfg: CaptureSettings, target_y: int) -> tuple[str, 
     return None
 
 
-def _capture_stills(page: Page, cfg: CaptureSettings, out_dir: Path) -> tuple[list[Still], float]:
+def _capture_stills(
+    page: Page, cfg: CaptureSettings, out_dir: Path, actions: list[str]
+) -> tuple[list[Still], float]:
+    """The hero and the next screens. Pop-ups that appear on a timer are answered before each
+    screenshot; what was clicked is added to ``actions``."""
     page.evaluate(js.SCROLL_TO, 0)
     page.evaluate(js.SCROLL_INNER, -cfg.viewport_height * 100)
     page.wait_for_timeout(_ms(cfg.screen_settle_s))
@@ -130,6 +134,7 @@ def _capture_stills(page: Page, cfg: CaptureSettings, out_dir: Path) -> tuple[li
             if moved is None:
                 break
             method, y = moved
+        actions += clear_popups(page, cfg)
         png = page.screenshot(type="png")
         if index == 1:
             hero_spread = visual.spread(visual.thumbnail(png))
@@ -207,7 +212,9 @@ def _analysis_visit(
         )
         result.text_sample = page.evaluate(js.TEXT_SAMPLE, cfg.text_sample_chars)
 
-        result.stills, result.hero_spread = _capture_stills(page, cfg, out_dir)
+        result.stills, result.hero_spread = _capture_stills(
+            page, cfg, out_dir, result.overlay_actions
+        )
         result.frames, result.scroll_hijacked, result.scroll_signals = _scroll_test(page, cfg)
         result.animations = _merge_animations(
             early_animations, page.evaluate(js.ANIMATIONS, cfg.max_animations)
@@ -371,6 +378,7 @@ def capture_site(entry: SiteEntry, variant: Variant, settings: Settings) -> Capt
             hero_spread=analysis.hero_spread,
             consent_left=analysis.consent_left,
             gate_text=analysis.gate_text,
+            clicked=bool(analysis.overlay_actions),
             reel_expected=reel_expected,
             reel_ok=reel_ok,
         ),
