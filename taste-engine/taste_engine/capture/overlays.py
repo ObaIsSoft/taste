@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
@@ -140,11 +141,17 @@ def _answer(page: Page, layer: Locator, texts: list[str], cfg: CaptureSettings) 
 
 
 def _gone(page: Page, cfg: CaptureSettings) -> bool:
-    page.wait_for_timeout(cfg.settle_poll_s * 1000)
-    try:
-        return bool(page.evaluate(js.POPUP_GONE))
-    except PlaywrightError:
-        return True  # the page moved on; the navigation guard deals with it
+    """Whether the pop-up went away, allowing for one that fades or slides out."""
+    deadline = time.monotonic() + cfg.screen_settle_s
+    while True:
+        page.wait_for_timeout(cfg.settle_poll_s * 1000)
+        try:
+            if page.evaluate(js.POPUP_GONE):
+                return True
+        except PlaywrightError:
+            return True  # the page moved on; the navigation guard deals with it
+        if time.monotonic() > deadline:
+            return False
 
 
 def _try_popup(page: Page, layer: Locator, text: str, cfg: CaptureSettings) -> str | None:
