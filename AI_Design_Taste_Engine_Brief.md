@@ -1,9 +1,15 @@
 # AI Design Taste Engine: Idea Brief & Technical Specification
 
-**Document Version:** 1.0  
-**Date:** August 2026  
+**Document Version:** 1.1 (sections 9–11 updated for the v2 build)  
+**Date:** August 2026, updated October 2026  
 **Classification:** Internal Concept Document  
 **Author:** Concept Synthesis  
+
+> **Status, October 2026.** Sections 1–8 and 12–16 are the original concept. Sections 9–11 now
+> describe what v2 actually is. The first approach (fine-tuning a vision-language model to be the
+> judge) failed for reasons recorded in `taste_engine_journal.md`. v2 judges from pixels and
+> measurements and uses language only to explain. What was built and why is in
+> `taste-engine/docs/v2-build-log.md`, and how to run it live is in `taste-engine/docs/operations.md`.
 
 ---
 
@@ -176,94 +182,73 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
 
 ## 9. HOW (Technical Architecture)
 
-### 9.1 System Overview
+### 9.1 System Overview (v2)
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        INPUT LAYER                          │
-│  Screenshot │ Figma JSON │ Video Walkthrough │ Text Brief   │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────┐
-│                    PROCESSING LAYER                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ Vision Enc.  │  │ Text Enc.    │  │ Motion Analyzer  │  │
-│  │ (CLIP/SigLIP)│  │ (LLM Backbone)│  │ (Frame Extract)  │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────┐
-│                     REASONING LAYER                         │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Multimodal LLM (Qwen2-VL / GPT-4V / Custom VLM)     │  │
-│  │  Fine-tuned on curated design corpus                 │  │
-│  └──────────────────────────────────────────────────────┘  │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────┐
-│                      OUTPUT LAYER                           │
-│  Design Rationale │ Token System │ GSAP Timeline │ Figma   │
-│  JSON Structure   │ Color Palette│ Easing Curves │ Plugin  │
-└─────────────────────────────────────────────────────────────┘
+ manifest (1,006 award URLs + generated "AI default" pages)
+     │
+ CAPTURE  Playwright, Chromium full headless (GPU), 1440×900, the same for every site
+     │    stills: hero + 3 screens · UX reel: intro, slow scroll, hovers, menu (H.264)
+     │    DOM boxes, design tokens, animations + GSAP calls, load/jank/scroll metrics
+     │    quality flags: blocked, down, parked, spam, gate left, page changed …
+     │    degraded twins: typography / colour / spacing / layout damaged on purpose
+     │
+ ANALYSE  pixel + layout features · Claude descriptions (facts from fixed lists, no verdicts)
+     │
+ VOTE     Supabase (rules in Postgres) + a thin Flask API on Vercel + a neutral voting page
+     │    visual round on stills · motion round on reels · A / B / equally good / can't decide
+     │    what decided it: listed dimensions and the designer's own words, plus a written reason
+     │    agreement measured continuously (panel, repeats, designer pairs, visual vs motion)
+     │
+ LEARN    Claude as a baseline judge (both orders) · pairwise scorer on frozen image
+     │    embeddings: P(A beats B) = σ(score A − score B), one head per dimension
+     │    synthetic labels: original beats its twin · award beats generated
+     │
+ USE      designers: a library ranked by craft, per dimension, with each site's tokens
+          coding agents (MCP): capture the agent's page the same way → scores, nearest
+          award sites and a critique written by Claude from scores and human reasons
 ```
 
-### 9.2 Data Pipeline
-1. **Ingestion**: Playwright-based scraper captures screenshots, metadata, tech stack
-2. **Annotation**: Local vision model (LLaVA 7B via Ollama) generates initial structural analysis
-3. **Enrichment**: Claude/GPT-4V API writes expert-level design rationale
-4. **Structuring**: Custom parser converts analysis into standardized JSON schema
-5. **Storage**: SQLite (metadata) + filesystem (images) + JSONL (training format)
-6. **Quality Filter**: Human designer rates entries; only 7+/10 enter training corpus
+### 9.2 Principles
+- **Measure what the browser knows, and judge from what voters saw.** A model is never asked to
+  report what the DOM or the pixels already show.
+- **Language explains; it does not judge.** Descriptions are facts; verdicts come from votes and
+  the trained scorer.
+- **Capture what designers say without predefining it.** Listed dimensions are shortcuts.
+  Designers can always use their own words, and themes are found in the text later.
+- **Honest evaluation.** Split by site, never by pair. The ceiling is how often designers agree
+  with each other.
 
-### 9.3 Model Architecture
-- **Base Model**: Qwen2-VL-72B or LLaVA-OneVision (open, multimodal, strong vision reasoning)
-- **Fine-tuning Method**: QLoRA (4-bit quantization + Low-Rank Adaptation)
-- **Training Data Format**: Interleaved image-text sequences with design-specific tokens
-- **Reward Model**: Separate lightweight model trained on designer preference rankings (RLHF)
-- **Inference**: Local (Ollama with custom GGUF) for MVP; API for V1+; cloud GPU for batch
-
-### 9.4 Key Technical Challenges
-| Challenge | Mitigation |
+### 9.3 Key Technical Challenges (as met)
+| Challenge | How v2 handles it |
 |-----------|------------|
-| Video understanding | Extract keyframes at interaction points; use video-captioning model as preprocessor |
-| Subjective evaluation | Designer-in-the-loop RLHF; multi-dimensional scoring (aesthetics, usability, accessibility) |
-| Figma JSON generation | Train on public Figma community files; validate against Figma Plugin API schema |
-| Copyright/data rights | Partner with studios for licensed data; focus on publicly documented case studies |
-| Motion code correctness | Render generated GSAP in headless Chrome; validate with visual diff |
-
----
+| Hostile sites: gates, cookie walls, bot walls, scroll hijacking | Scoped multilingual gate answers, a page-change guard, a normal browser identity, stills by native, inner or wheel scroll; anything unresolved fails QA |
+| Motion that stills cannot show | A scripted reel per site, Chromium's own scroll gesture, motion and UX metrics on a GPU-rendered page |
+| Subjective evaluation | Calibration pairs every designer judges, swapped repeats, overlap, per-voter weighting |
+| LLM judges biased by position | Baseline in both orders; the trained judge works on embeddings, not text |
+| A judge that never saw slop | Degraded twins and generated pages as contrast |
 
 ## 10. PROCESS (Development Roadmap)
 
-### Phase 0: Validation (Weeks 1–4)
-- [ ] Scrape 50 Awwwards SOTD entries with metadata
-- [ ] Build automated annotation pipeline (screenshot → LLaVA → Claude → JSON)
-- [ ] Post in design communities (r/web_design, Designer News) to validate demand
-- [ ] Build Figma plugin skeleton or Chrome extension MVP
-- **Deliverable**: Dataset of 50 curated entries + community validation signals
+### Done (September–October 2026)
+- [x] v1: 100 sites, 620 valid one-person votes, LLM critics (SFT, MADPO): failed honestly
+  (see the journal)
+- [x] v2 capture, analysis, voting schema, voting app, agreement measurement
+- [x] Scraper tested on 30 random sites, fixed, re-run
 
-### Phase 1: Dataset & Taste Layer (Months 2–4)
-- [ ] Scale dataset to 1,000 curated entries
-- [ ] Recruit 5–10 senior designers for annotation and RLHF
-- [ ] Build reference analyzer: upload screenshot → structured critique
-- [ ] Launch Twitter/X bot posting daily "Why This Design Works" threads
-- **Deliverable**: Working reference analyzer + 1,000-entry dataset + designer network
+### Pilot (now)
+- [ ] Capture 100 sites (`manifest/pilot-ids.txt`); about 75 expected to pass QA
+- [ ] Calibration: 14 sites in the visual round (91 pairs), 8 in the motion round (28 pairs),
+  then adaptive pairs
+- [ ] 4 designers, about 1,600 votes
+- [ ] Measure agreement and consistency; run the Claude baseline judge
 
-### Phase 2: Copilot Features (Months 5–8)
-- [ ] Add motion spec generation (GSAP timeline from reference)
-- [ ] Add token extraction (color, spacing, typography from screenshot)
-- [ ] Fine-tune 7B vision model on curated dataset via QLoRA on cloud GPU
-- [ ] Launch paid Figma plugin ($20–$50/month)
-- **Deliverable**: Figma plugin with 3 core features + 100 paying users
+### Scale (if the pilot clears its agreement target)
+- [ ] Capture the remaining ~900 URLs, the twins (stills only) and the generated pages
+- [ ] Train the pairwise scorer; per-dimension heads; evaluate against designer agreement
 
-### Phase 3: Platform (Months 9–18)
-- [ ] Add video understanding (site walkthrough analysis)
-- [ ] Build team collaboration dashboard
-- [ ] Train custom reward model on 10,000+ designer ratings
-- [ ] Launch API for agency integration
-- [ ] Explore enterprise design system partnerships
-- **Deliverable**: Full platform + API + 1,000+ paying users
-
----
+### Products
+- [ ] Designer library (ranked, per dimension, tokens as style guides)
+- [ ] MCP critic for coding agents
 
 ## 11. REQUIREMENTS
 
@@ -275,18 +260,15 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
 | Model fine-tuning | Google Colab (T4) / Kaggle | RunPod A100 (40GB VRAM) |
 | Production inference | Cloud VPS (4 vCPU, 16GB) | Kubernetes cluster with GPU nodes |
 
-### 11.2 Software Stack
+### 11.2 Software Stack (v2)
 | Layer | Technology |
 |-------|------------|
-| Scraping | Python, Playwright, Pillow |
-| Local ML | Ollama, LLaVA 7B/13B, CLIP |
-| Cloud ML | PyTorch, Transformers, PEFT (QLoRA), Unsloth |
-| Data Storage | SQLite, JSONL, Git LFS |
-| Backend | Python (FastAPI) or Node.js |
-| Frontend | React / Next.js |
-| Figma Plugin | Figma Plugin API, TypeScript |
-| Chrome Extension | Manifest V3, JavaScript |
-| APIs | Claude API, OpenAI GPT-4V, Figma API |
+| Capture | Python 3.12, Playwright (Chromium full headless), ffmpeg, Pillow, NumPy |
+| Pipeline | The `taste` command line (`taste-engine/`), pydantic settings |
+| Language | Claude API (Opus 5.5 by default) through the Message Batches API |
+| Voting data | Supabase: Postgres with the voting rules, private Storage with signed links |
+| Voting site | Flask function and static pages on Vercel |
+| Learning (next) | PyTorch, frozen image encoders (SigLIP / CLIP / DINOv2) |
 
 ### 11.3 Human Resources
 | Role | Commitment | When Needed |
@@ -297,6 +279,11 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
 | Designer annotators | 10–20 people, gig work | Phase 1–2 |
 
 ### 11.4 Budget Estimate
+The project runs on free tiers and stays there: Supabase free (1 GB storage, 5 GB egress a month)
+and Vercel Hobby. Media is sized for it: about 1 MB a site (stills plus a 0.45 MB reel), so about
+1,000 votable sites fit. Claude use is small: descriptions cost about $6 per 1,000 sites at batch
+prices. The original phase budgets below assumed a funded product and are kept for reference.
+
 | Phase | Cost Range | Primary Expenses |
 |-------|------------|------------------|
 | Phase 0 | $0–$500 | API calls (Claude/GPT), domain, hosting |
@@ -305,10 +292,13 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
 | Phase 3 | $50,000–$200,000 | Full-time hires, infrastructure, sales |
 
 ### 11.5 Data Requirements
-- **Initial corpus**: 1,000 curated website entries (screenshot + metadata + rationale)
-- **Growth target**: 10,000 entries by Phase 3
-- **Annotation standard**: Each entry must include: layout type, color tokens, typography classification, motion impression, design rationale, quality score
-- **Legal**: All entries must have documented permission or fall under fair use for research/annotation
+- **Corpus**: 1,006 award URLs (about 790 expected to capture cleanly), their degraded twins, and
+  about 60 generated pages
+- **Per site**: four stills, a UX reel, DOM boxes, design tokens, animations, UX metrics, quality
+  flags, a factual description
+- **Labels**: pairwise votes from designers (visual and motion), with listed dimensions, their own
+  words and reasons; automatic labels from twins and generated pages
+- **Legal**: screenshots of public pages for research; the voting site never embeds live sites
 
 ---
 

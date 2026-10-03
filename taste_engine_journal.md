@@ -1,5 +1,11 @@
 # TASTE Engine: Comprehensive Project Journal & Architecture
 
+> **Reading guide (October 2026).** Everything up to the September 28th update records v1: the
+> first pipeline, its LLM critics and why they failed. v1 code was retired on 3 October 2026; it
+> remains in git history. The v2 rebuild, its decisions and the live cutover are in the last two
+> sections, with full detail in `taste-engine/docs/v2-build-log.md` and
+> `taste-engine/docs/operations.md`.
+
 ## 1. Executive Summary & Core Motivation
 The goal of **TASTE** (Training AI for Structured Taste Engine) is to create the first AI system capable of understanding and quantifying subjective design "taste"—specifically structural layout, typography, color harmony, and motion choreography—by reverse-engineering premium, award-winning websites.
 
@@ -732,3 +738,61 @@ The voter's reasoning text becomes a **binary mask** over the heads. If the vote
 1. 900-site scrape (with fixed scraper)
 2. Full 10k vote collection
 3. Scale the MDPD model
+
+---
+
+## October 3rd Update: The v2 Rebuild, From Plan to Pilot
+
+v2 started fresh: v1 votes and captures are archived, not reused. The rebuild replaced every v1
+pipeline script with one package and one command line (`taste`), and moved the voting rules into
+Postgres. What changed, and why:
+
+- **Judge from pixels, explain with language.** v1 asked language models to judge from text
+  summaries of a page. v2 records what voters actually see (four stills and a scripted UX reel) and
+  what the browser actually knows (DOM boxes, design tokens, animations, load and scroll metrics).
+  Claude only describes facts, from fixed lists, and never gives verdicts.
+- **Motion is captured, not guessed.** Every site gets the same reel choreography. Voting is split
+  into a visual round (stills) and a motion round (reels), so "good UI, bad UX" shows up as two
+  different verdicts instead of one muddled one.
+- **Designers' words are never forced into a list.** A vote records the listed dimensions that
+  decided it and the designer's own words, and the reason box is always there. Themes are to be found
+  in the text later, never imposed: "if you create a lookup table, you kill the project at infancy."
+- **Agreement is measured, not assumed.** Fixed calibration pairs, swapped repeats, overlap pairs
+  and views that line votes up. Split pairs always ask for reasons, and conflicting reasons are kept:
+  they show whether designers weighed different things or disagree on the same thing.
+- **The scraper was tested honestly.** On 30 random sites only 15 came out clean at first. A
+  quarter of the captures that passed QA were wrong: an age gate on every still, a click that left
+  the page, parked and spam domains. The fixes (gates answered only inside the blocking layer, a
+  page-change guard, patient wheel scrolling, a normal browser identity, GPU rendering, Chromium's
+  own scroll gesture for reels, new QA flags) were verified by re-running the same 30 sites.
+- **Free tier, permanently.** Media is sized to fit Supabase's free storage (about 1 MB a site),
+  and only votable originals go online.
+
+**Pilot plan:** 100 sites, 14 visual and 8 motion calibration sites, four designers.
+
+## Lessons From v1 (kept from retired notes)
+
+These came from documents retired in the clean-up (`madpo.md`, `training.md`, `alternative.md`,
+`further_convo.md`, `TASTE_ENGINE_V2_DESIGN.md`, `goals.md`, `model_evaluation.md`); all remain
+in git history.
+
+1. **Decouple measurement from judgment.** One 8B vision-language model asked to parse the DOM, read
+   the pixels and act as creative director at once falls back on design platitudes ("clean, modern,
+   strategic whitespace"). A browser measures styles and boxes exactly; a model should only do what
+   the browser cannot.
+2. **Positional bias is the default failure.** The quantised critic picked "Variant B" 71% of the
+   time, and swapping the sides changed its verdict in 58% of cases. Any judge must be tested in both
+   orders.
+3. **Quantisation can erase what preference training taught.** The MADPO critic's fine decision
+   boundaries did not survive 4-bit quantisation, and the model fell back to its SFT prior.
+4. **SFT and DPO do different jobs.** SFT teaches the format and vocabulary; DPO only reweights
+   between outputs the model can already produce. DPO on a base model whose probability of the
+   target format is near zero degenerates.
+5. **Test on what the model has not seen.** v1's evaluations scored models on their own training
+   rows, so nothing about generalisation was ever learned. v2 splits by site.
+6. **Thin inputs cap any model.** Four page-level numbers plus model-written descriptions could not
+   carry what designers judged; in v1's votes, winners even had less whitespace in 61% of pairs.
+7. **Motion is a pixel question as much as a code question.** "What happens to every pixel over
+   time" generalises beyond knowing which animation library a site uses. v2 keeps both: animation
+   records and reels.
+

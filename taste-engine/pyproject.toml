@@ -34,7 +34,7 @@ include = ["taste_engine*"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["scripts", "data", "data_v1_archive", "results", "config.py", "pipeline.py", "*.py.bak"]
+extend-exclude = ["data", "data_v1_archive"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "PTH"]
