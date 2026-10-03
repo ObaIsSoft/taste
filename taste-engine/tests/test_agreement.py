@@ -60,6 +60,15 @@ def test_summary_counts_agreement_and_differences():
                 "opposite": 1,
             }
         ],
+        "voter_effort": [
+            {
+                "round": "visual",
+                "voter": "Ada",
+                "votes": 120,
+                "fast_votes": 3,
+                "median_seconds": 8.5,
+            }
+        ],
         "voter_consistency": [
             {
                 "round": "visual",
@@ -79,6 +88,7 @@ def test_summary_counts_agreement_and_differences():
         "Visual round",
         "  panel: 75% mean agreement on 2 pairs judged by 2 or more voters; split on 1",
         "  Ada and Bo: same verdict on 3 of 4 shared pairs (75%), opposite on 1",
+        "  Ada: 120 votes, median 8.5 s, 3 faster than the low-effort limit",
         "  Ada on repeats: same verdict on 9 of 10, flipped on 1",
         "Motion round",
         "  panel: no pair judged by 2 or more voters yet",

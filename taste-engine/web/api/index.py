@@ -27,7 +27,14 @@ ROUNDS = ("visual", "motion")
 EVENTS = ("play_left", "play_right", "open_live_left", "open_live_right")
 
 # SQLSTATE raised by the voting functions -> HTTP status
-STATUS_FOR = {"28000": 401, "22023": 400, "22P02": 400, "23505": 409, "P0002": 404}
+STATUS_FOR = {
+    "28000": 401,
+    "22023": 400,
+    "22P02": 400,
+    "23505": 409,
+    "P0002": 404,
+    "P0429": 429,
+}
 
 app = Flask(__name__, static_folder=str(PUBLIC_DIR), static_url_path="")
 log = logging.getLogger(__name__)
@@ -97,13 +104,10 @@ def config():
     dimensions = (
         db().table("dimensions").select("id,label,round,position").order("position").execute().data
     )
-    [settings] = (
-        db().table("voting_config").select("min_reason_chars,max_dimensions").execute().data
-    )
+    limits = "min_reason_chars,max_dimensions,max_own_terms,max_term_chars"
+    [settings] = db().table("voting_config").select(limits).execute().data
     return jsonify(
-        dimensions={r: [d for d in dimensions if d["round"] == r] for r in ROUNDS},
-        min_reason_chars=settings["min_reason_chars"],
-        max_dimensions=settings["max_dimensions"],
+        dimensions={r: [d for d in dimensions if d["round"] == r] for r in ROUNDS}, **settings
     )
 
 
@@ -148,15 +152,28 @@ def pair():
     )
 
 
+@app.get("/api/terms")
+def terms():
+    """The voter's own past words for a round, most used first, to suggest as they type."""
+    round_kind = request.args.get("round", "visual")
+    if round_kind not in ROUNDS:
+        raise BadRequest("round must be visual or motion")
+    rows = _rpc("voter_terms", {"p_code": _code(), "p_round": round_kind})
+    return jsonify(terms=[row["term"] for row in rows or []])
+
+
 @app.post("/api/vote")
 def vote():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         raise BadRequest("send a JSON object")
     dimensions = body.get("dimensions") or []
+    own_terms = body.get("terms") or []
     reason = body.get("reason")
     if not isinstance(dimensions, list) or not all(isinstance(d, str) for d in dimensions):
         raise BadRequest("dimensions must be a list of names")
+    if not isinstance(own_terms, list) or not all(isinstance(t, str) for t in own_terms):
+        raise BadRequest("terms must be a list of words")
     if reason is not None and not isinstance(reason, str):
         raise BadRequest("reason must be text")
     vote_id = _rpc(
@@ -167,6 +184,7 @@ def vote():
             "p_outcome": body.get("outcome"),
             "p_dimensions": dimensions,
             "p_reason": reason,
+            "p_terms": own_terms,
         },
     )
     return jsonify(vote_id=vote_id)

@@ -24,10 +24,16 @@ create table voting_config (
   id boolean primary key default true check (id),
   min_reason_chars integer not null default 10 check (min_reason_chars > 0),
   max_dimensions integer not null default 3 check (max_dimensions > 0),  -- chips per vote
+  -- A voter's own words for what decided it: no fixed list, only limits on how many and how long.
+  max_own_terms integer not null default 5 check (max_own_terms >= 0),
+  max_term_chars integer not null default 40 check (max_term_chars > 0),
   reason_every integer not null default 3 check (reason_every > 0),  -- ask for a reason on 1 in N
   repeat_count integer not null default 10 check (repeat_count >= 0),  -- swapped repeats per voter
   overlap_share numeric not null default 0.1 check (overlap_share between 0 and 1),
-  min_vote_seconds numeric not null default 3,  -- faster votes are flagged as low effort
+  -- A vote sooner than this after its pair was served is refused: nobody can look at two sites
+  -- that fast, and it caps what a script holding a leaked invite code can do.
+  min_vote_seconds numeric not null default 1,
+  fast_vote_seconds numeric not null default 3,  -- faster votes count as low effort in reports
   resume_minutes integer not null default 60  -- an unanswered pair is served again within this
 );
 insert into voting_config default values;
@@ -120,7 +126,8 @@ create table votes (
   pair_low text generated always as (least(left_capture, right_capture)) stored,
   pair_high text generated always as (greatest(left_capture, right_capture)) stored,
   outcome vote_outcome not null,
-  dimensions text[] not null default '{}',
+  dimensions text[] not null default '{}',  -- from the dimensions table: the shared terms
+  own_terms text[] not null default '{}',  -- the voter's own words, never from a list
   reason text,
   seconds_to_vote numeric not null,
   created_at timestamptz not null default now(),
@@ -176,9 +183,12 @@ select v.id, v.voter_id, v.round, v.pair_low, v.pair_high, s.source,
          when v.outcome = 'cant_decide' then 'unsure'
          else 'broken'
        end as verdict,
-       v.dimensions, v.reason, v.created_at
+       v.dimensions, v.own_terms, v.reason, v.seconds_to_vote,
+       v.seconds_to_vote < c.fast_vote_seconds as fast,
+       v.created_at
   from votes v
-  join served_pairs s on s.token = v.token;
+  join served_pairs s on s.token = v.token
+ cross join voting_config c;
 
 -- A voter's first verdict on a pair is their judgment of it. A later one is a repeat, which
 -- measures their consistency instead.
@@ -227,6 +237,17 @@ select r.round, r.voter_id, vt.name as voter,
   join voters vt on vt.id = r.voter_id
  group by r.round, r.voter_id, vt.name;
 
+-- How each voter votes: how many, how fast, and how many faster than fast_vote_seconds.
+create view voter_effort with (security_invoker = true) as
+select v.round, v.voter_id, vt.name as voter,
+       count(*) as votes,
+       count(*) filter (where v.fast) as fast_votes,
+       round(percentile_cont(0.5) within group (order by v.seconds_to_vote)::numeric, 1)
+         as median_seconds
+  from vote_verdicts v
+  join voters vt on vt.id = v.voter_id
+ group by v.round, v.voter_id, vt.name;
+
 -- How often two voters gave the same verdict on the pairs both judged. opposite means each
 -- preferred a different capture.
 create view voter_agreement with (security_invoker = true) as
@@ -254,6 +275,7 @@ select v.voter_id, vt.name as voter, v.pair_low, v.pair_high,
        v.verdict <> m.verdict as differs,
        v.verdict <> m.verdict and 'tie' not in (v.verdict, m.verdict) as opposite,
        v.dimensions as visual_dimensions, m.dimensions as motion_dimensions,
+       v.own_terms as visual_terms, m.own_terms as motion_terms,
        v.reason as visual_reason, m.reason as motion_reason
   from first_verdicts v
   join first_verdicts m
@@ -354,26 +376,35 @@ begin
     end if;
   end if;
 
-  -- 4. Adaptive: the least-compared capture in the pool, against one this voter has not
-  --    paired it with yet.
+  -- 4. Adaptive: the least-compared capture in the pool that this voter can still pair, against
+  --    one they have not paired it with yet. A capture they have paired with everything is
+  --    skipped, so a busy voter is never told there is nothing left while pairs remain.
   if src is null then
-    select c.id into a
-      from captures c
-     where servable(c, p_round)
-     order by (select count(*) from votes v
-                where v.round = p_round and (v.left_capture = c.id or v.right_capture = c.id)),
-              random()
-     limit 1;
-    select c.id into b
-      from captures c
-     where servable(c, p_round) and c.id <> a
-       and not exists (
-         select 1 from votes v
-          where v.voter_id = voter.id and v.round = p_round
-            and v.pair_low = least(a, c.id) and v.pair_high = greatest(a, c.id))
-     order by random()
-     limit 1;
-    if a is null or b is null then
+    for a in
+      select c.id
+        from captures c
+        left join (
+          select x.capture, count(*) as n
+            from (select left_capture as capture from votes where round = p_round
+                  union all
+                  select right_capture from votes where round = p_round) x
+           group by x.capture
+        ) seen on seen.capture = c.id
+       where servable(c, p_round)
+       order by coalesce(seen.n, 0), random()
+    loop
+      select c.id into b
+        from captures c
+       where servable(c, p_round) and c.id <> a
+         and not exists (
+           select 1 from votes v
+            where v.voter_id = voter.id and v.round = p_round
+              and v.pair_low = least(a, c.id) and v.pair_high = greatest(a, c.id))
+       order by random()
+       limit 1;
+      exit when b is not null;
+    end loop;
+    if b is null then
       raise exception 'no pairs left for this round' using errcode = 'P0002';
     end if;
     src := 'adaptive';
@@ -421,7 +452,8 @@ end;
 $$;
 
 create function cast_vote(
-  p_code text, p_token uuid, p_outcome vote_outcome, p_dimensions text[], p_reason text
+  p_code text, p_token uuid, p_outcome vote_outcome, p_dimensions text[], p_reason text,
+  p_terms text[] default '{}'
 ) returns bigint
 language plpgsql as $$
 declare
@@ -429,6 +461,8 @@ declare
   cfg voting_config;
   pair served_pairs;
   dims text[] := coalesce(p_dimensions, '{}');
+  terms text[] := coalesce(
+    (select array_agg(distinct trim(t)) from unnest(p_terms) t where trim(t) <> ''), '{}');
   decisive boolean := p_outcome in ('left', 'right');
   vote_id bigint;
 begin
@@ -440,13 +474,23 @@ begin
   if pair.used_at is not null then
     raise exception 'this pair already has your vote' using errcode = '23505';
   end if;
+  if extract(epoch from now() - pair.served_at) < cfg.min_vote_seconds then
+    raise exception 'take a moment to look at both sites' using errcode = 'P0429';
+  end if;
   if exists (
        select 1 from unnest(dims) d
         where not exists (select 1 from dimensions x where x.id = d and x.round = pair.round)) then
     raise exception 'unknown dimension for this round' using errcode = '22023';
   end if;
-  if decisive and cardinality(dims) = 0 then
-    raise exception 'pick at least one dimension that decided it' using errcode = '22023';
+  if decisive and cardinality(dims) + cardinality(terms) = 0 then
+    raise exception 'say what decided it: pick one, or add your own words' using errcode = '22023';
+  end if;
+  if cardinality(terms) > cfg.max_own_terms then
+    raise exception 'add at most % of your own words', cfg.max_own_terms using errcode = '22023';
+  end if;
+  if exists (select 1 from unnest(terms) t where length(t) > cfg.max_term_chars) then
+    raise exception 'keep each of your own words under % characters', cfg.max_term_chars
+      using errcode = '22023';
   end if;
   if cardinality(dims) > cfg.max_dimensions then
     raise exception 'pick at most % dimensions', cfg.max_dimensions using errcode = '22023';
@@ -458,9 +502,10 @@ begin
   end if;
 
   insert into votes (
-    token, voter_id, round, left_capture, right_capture, outcome, dimensions, reason, seconds_to_vote
+    token, voter_id, round, left_capture, right_capture, outcome, dimensions, own_terms, reason,
+    seconds_to_vote
   ) values (
-    p_token, voter.id, pair.round, pair.left_capture, pair.right_capture, p_outcome, dims,
+    p_token, voter.id, pair.round, pair.left_capture, pair.right_capture, p_outcome, dims, terms,
     nullif(trim(p_reason), ''), extract(epoch from now() - pair.served_at)
   )
   returning id into vote_id;
@@ -484,6 +529,25 @@ begin
     raise exception 'this pair was not served to you' using errcode = '22023';
   end if;
   insert into vote_events (token, kind) values (p_token, p_kind);
+end;
+$$;
+
+-- The words this voter has used before in a round, most used first, offered back as they type.
+-- Only their own: other voters' words would steer them toward a shared vocabulary.
+create function voter_terms(p_code text, p_round round_kind)
+returns table (term text, uses bigint)
+language plpgsql stable as $$
+declare
+  voter voters := voter_for(p_code);
+begin
+  return query
+  select w.word, count(*)
+    from votes v
+   cross join lateral unnest(v.own_terms) as w (word)
+   where v.voter_id = voter.id and v.round = p_round
+   group by w.word
+   order by count(*) desc, w.word
+   limit 50;
 end;
 $$;
 

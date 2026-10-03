@@ -86,7 +86,8 @@ def db():
               ('visual', '0001-original', '0002-original'),
               ('visual', '0001-original', '0003-original'),
               ('visual', '0002-original', '0003-original');
-            update voting_config set repeat_count = 2, overlap_share = 0, reason_every = 1;
+            update voting_config
+               set repeat_count = 2, overlap_share = 0, reason_every = 1, min_vote_seconds = 0;
             """
         )
         yield database
@@ -110,9 +111,11 @@ def _vote(
     dims="{whitespace}",
     reason="the type scale is calmer",
     code="code-ada",
+    terms="{}",
 ):
     return db.run(
-        f"select cast_vote('{code}', '{pair['token']}', '{outcome}', '{dims}', '{reason}')"
+        f"select cast_vote('{code}', '{pair['token']}', '{outcome}', '{dims}', '{reason}', "
+        f"'{terms}')"
     )
 
 
@@ -148,7 +151,7 @@ def test_vote_rules_are_enforced_by_the_database(db):
     assert "22023" in db.error(
         f"select cast_vote('code-ada', '{pair['token']}', 'left', '{{whitespace}}', 'good reason!')"
     )
-    assert "pick at least one dimension" in db.error(
+    assert "say what decided it" in db.error(
         f"select cast_vote('code-bo', '{pair['token']}', 'left', '{{}}', 'good reason!')"
     )
     assert "unknown dimension" in db.error(
@@ -201,7 +204,7 @@ def _add_sites_and_voters(db):
           from generate_series(5, 8) i
         on conflict do nothing;
         insert into voters (name, invite_code)
-        values ('Cy', 'code-cy'), ('Di', 'code-di'), ('Ed', 'code-ed')
+        values ('Cy', 'code-cy'), ('Di', 'code-di'), ('Ed', 'code-ed'), ('Fi', 'code-fi')
         on conflict do nothing;
         """
     )
@@ -297,3 +300,56 @@ def test_reasons_are_asked_where_they_explain_a_difference(db):
             f"update voting_config set reason_every = 1; "
             f"update captures set in_pool = true where id = '{_c(3)}'"
         )
+
+
+def test_votes_faster_than_a_person_can_look_are_refused(db):
+    _add_sites_and_voters(db)
+    db.run("update voting_config set min_vote_seconds = 60")
+    try:
+        pair = _serve(db, "code-fi", _c(7), _c(8))
+        assert "P0429" in db.error(
+            f"select cast_vote('code-fi', '{pair['token']}', 'cant_decide', '{{}}', null)"
+        )
+    finally:
+        db.run("update voting_config set min_vote_seconds = 0")
+    assert db.run("select count(*) from voter_effort where voter = 'Cy'") == [["2"]]
+
+
+def test_a_voter_who_paired_the_rarest_capture_with_everything_still_gets_pairs(db):
+    _add_sites_and_voters(db)
+    rare, others = _c(4), (_c(7), _c(8))
+    keep = ", ".join(f"'{c}'" for c in (rare, *others))
+    db.run(f"update captures set in_pool = id in ({keep})")
+    try:
+        for other in others:  # Fi has judged the rarest capture against both others
+            _vote(db, _serve(db, "code-fi", rare, other), "left", code="code-fi")
+        for _ in range(3):  # and other voters made the two others the most compared
+            _vote(db, _serve(db, "code-cy", *others), "left", code="code-cy")
+        pair = _next(db, code="code-fi")
+        assert pair["source"] == "adaptive"
+        assert {pair["left"], pair["right"]} == set(others)
+    finally:
+        db.run("update captures set in_pool = true")
+
+
+def test_voters_can_say_it_in_their_own_words(db):
+    _add_sites_and_voters(db)
+    words = '{"tension between serif and grotesk", " editorial pacing ", "editorial pacing"}'
+    _vote(db, _serve(db, "code-ed", _c(5), _c(7)), "left", dims="{}", code="code-ed", terms=words)
+    [[stored]] = db.run("select own_terms from votes order by id desc limit 1")
+    assert stored == '{"editorial pacing","tension between serif and grotesk"}'  # trimmed, once
+
+    pair = _serve(db, "code-ed", _c(6), _c(8))
+    assert "say what decided it" in db.error(
+        f"select cast_vote('code-ed', '{pair['token']}', 'left', '{{}}', 'reason', '{{}}')"
+    )
+    assert "under 40 characters" in db.error(
+        f"select cast_vote('code-ed', '{pair['token']}', 'left', '{{}}', 'reason', "
+        f"'{{\"{'x' * 41}\"}}')"
+    )
+    _vote(db, pair, "right", dims="{colour}", code="code-ed", terms="{editorial pacing}")
+    assert db.run("select term, uses from voter_terms('code-ed', 'visual') limit 2") == [
+        ["editorial pacing", "2"],
+        ["tension between serif and grotesk", "1"],
+    ]
+    assert db.run("select count(*) from voter_terms('code-cy', 'visual')") == [["0"]]

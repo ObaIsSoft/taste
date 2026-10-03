@@ -113,6 +113,15 @@ label { font-weight: 550; }
 
 kbd { display: none; }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* Top bar */
 
 .topbar {
@@ -355,7 +364,20 @@ kbd { display: none; }
   .report:hover { color: var(--ink); }
 }
 
-.media { min-height: 0; background: var(--canvas); }
+.media { position: relative; min-height: 0; background: var(--canvas); }
+
+/* While a new pair arrives, the old one fades and says so. */
+.media.is-loading > * { opacity: 0.2; }
+
+.media.is-loading::after {
+  content: "Loading…";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
 
 /* A site's screens, stacked in their own scroll box like the page itself. */
 .strip { height: 100%; overflow-y: auto; overscroll-behavior: contain; }
@@ -417,6 +439,14 @@ kbd { display: none; }
 }
 
 .chip[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
+
+.own-terms { display: grid; gap: 8px; margin-top: 10px; }
+#own-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+#own-chips:empty { display: none; }
+
+/* A voter's own words: outlined, with a cross to remove them. */
+.chip.own { border: 1px dashed var(--ink); }
+.chip.own::after { content: "×"; color: var(--ink-2); }
 
 @media (hover: hover) {
   .chip[aria-pressed="true"]:not(:disabled):hover { background: #333; }

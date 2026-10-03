@@ -90,3 +90,29 @@ def test_config_comes_from_the_database(api):
     body = client.get("/api/config").get_json()
     assert body["min_reason_chars"] == 10 and body["max_dimensions"] == 3
     assert [d["id"] for d in body["dimensions"]["motion"]] == ["pacing"]
+
+
+def test_a_vote_too_fast_to_be_real_is_429(api):
+    client, fake = api
+    fake.rpc_results["cast_vote"] = APIError(
+        {"code": "P0429", "message": "take a moment to look at both sites"}
+    )
+    response = client.post("/api/vote", json={"token": "t-1", "outcome": "cant_decide"})
+    assert response.status_code == 429
+
+
+def test_own_words_pass_through_and_must_be_words(api):
+    client, fake = api
+    fake.rpc_results["cast_vote"] = 7
+    body = {"token": "t-1", "outcome": "left", "terms": ["editorial pacing"]}
+    assert client.post("/api/vote", json=body).status_code == 200
+    assert fake.calls[-1][1]["p_terms"] == ["editorial pacing"]
+    body["terms"] = "editorial pacing"
+    assert client.post("/api/vote", json=body).status_code == 400
+
+
+def test_terms_are_the_voters_own(api):
+    client, fake = api
+    fake.rpc_results["voter_terms"] = [{"term": "editorial pacing", "uses": 2}]
+    assert client.get("/api/terms?round=visual").get_json() == {"terms": ["editorial pacing"]}
+    assert fake.calls[-1] == ("voter_terms", {"p_code": "code-ada", "p_round": "visual"})

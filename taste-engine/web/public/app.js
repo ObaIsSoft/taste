@@ -11,7 +11,8 @@ const PICK_KEYS = { 1: 'left', 2: 'right' };
 const OUTCOME_KEYS = { e: 'equally_good', s: 'cant_decide' };
 
 const state = {
-  code: null, name: null, config: null, round: null, pair: null, pick: null, chips: new Set(), busy: false,
+  code: null, name: null, config: null, round: null, pair: null, pick: null, chips: new Set(), terms: [],
+  busy: false,
 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -137,6 +138,52 @@ function toggleChip(chip) {
   chip.setAttribute('aria-pressed', String(state.chips.has(id)));
 }
 
+// The voter's own words: any wording, kept as typed. There is no list to choose from.
+function addTerm(text) {
+  const term = text.trim().replace(/\s+/g, ' ');
+  if (!term) return true;
+  if (state.terms.some((t) => t.toLowerCase() === term.toLowerCase())) return true;
+  if (term.length > state.config.max_term_chars) {
+    say(`Keep each of your own words under ${state.config.max_term_chars} characters.`);
+    return false;
+  }
+  if (state.terms.length >= state.config.max_own_terms) {
+    say(`Add at most ${state.config.max_own_terms} of your own words.`);
+    return false;
+  }
+  state.terms.push(term);
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'chip own';
+  chip.textContent = term;
+  chip.setAttribute('aria-label', `Remove "${term}"`);
+  chip.addEventListener('click', () => {
+    state.terms = state.terms.filter((t) => t !== term);
+    chip.remove();
+  });
+  $('#own-chips').append(chip);
+  say('');
+  return true;
+}
+
+function rememberTerms(terms) {
+  const list = $('#own-term-list');
+  const known = new Set([...list.options].map((option) => option.value));
+  for (const term of terms) {
+    if (known.has(term)) continue;
+    const option = document.createElement('option');
+    option.value = term;
+    list.append(option);
+  }
+}
+
+async function loadTerms() {
+  $('#own-term-list').replaceChildren();
+  try {
+    rememberTerms((await api(`/api/terms?round=${state.round}`)).terms);
+  } catch (error) { /* suggestions are a convenience */ }
+}
+
 function selectTab(side) {
   for (const s of SIDES) {
     const selected = s === side;
@@ -158,6 +205,7 @@ function renderSide(side, data) {
   const isVideo = state.round === 'motion' && Boolean(data.reel);
   media.replaceChildren();
   media.classList.toggle('is-video', isVideo);
+  media.classList.toggle('is-loading', !isVideo);  // a video shows its poster as it arrives
   if (isVideo) {
     const video = document.createElement('video');
     Object.assign(video, { src: data.reel, controls: true, muted: true, playsInline: true, preload: 'none' });
@@ -175,6 +223,11 @@ function renderSide(side, data) {
       const image = document.createElement('img');
       Object.assign(image, { src: url, alt: `${name}, screen ${index + 1}`, decoding: 'async' });
       image.loading = index === 0 ? 'eager' : 'lazy';
+      if (index === 0) {
+        const loaded = () => media.classList.remove('is-loading');
+        image.addEventListener('load', loaded, { once: true });
+        image.addEventListener('error', loaded, { once: true });
+      }
       strip.append(image);
     });
     media.append(strip);
@@ -189,7 +242,10 @@ function renderSide(side, data) {
 function resetDecision() {
   state.pick = null;
   state.chips.clear();
-  for (const chip of $$('.chip')) chip.setAttribute('aria-pressed', 'false');
+  state.terms = [];
+  $('#own-chips').replaceChildren();
+  $('#own-term').value = '';
+  for (const chip of $$('#chips .chip')) chip.setAttribute('aria-pressed', 'false');
   for (const pane of $$('.pane')) pane.classList.remove('is-picked');
   $('#reason').value = '';
   $('#explain').hidden = true;
@@ -204,21 +260,23 @@ function pick(side) {
   const legend = $('#chips-legend');
   const hint = document.createElement('span');
   hint.className = 'hint';
-  hint.textContent = `Pick 1 to ${state.config.max_dimensions}`;
+  hint.textContent = `Pick up to ${state.config.max_dimensions}, or use your own words`;
   legend.replaceChildren(`What made ${letter} better?`, hint);
   $('#reason').placeholder = `${letter} is better because …`;
-  $('#reason-hint').textContent = `(at least ${state.config.min_reason_chars} characters)`;
-  $('#reason-block').hidden = !state.pair.reason_requested;
+  $('#reason-hint').textContent = state.pair.reason_requested
+    ? `(at least ${state.config.min_reason_chars} characters)`
+    : '(optional)';
   for (const s of SIDES) $(`#card-${s}`).classList.toggle('is-picked', s === side);
   $('#decide').hidden = true;
   $('#explain').hidden = false;
   say('');
-  const first = $('.chip');
+  const first = $('#chips .chip');
   if (first) first.focus();
 }
 
 async function loadPair() {
   setBusy(true);
+  for (const media of $$('.media')) media.classList.add('is-loading');
   try {
     const pair = await api(`/api/pair?round=${state.round}`);
     state.pair = pair;
@@ -240,8 +298,10 @@ async function submitVote(outcome) {
   if (!state.pair || state.busy) return;
   const decisive = outcome === 'left' || outcome === 'right';
   const reason = $('#reason').value.trim();
-  if (decisive && state.chips.size === 0) {
-    say('Pick at least one thing that decided it.');
+  if (decisive && !addTerm($('#own-term').value)) return;  // words typed but not yet added
+  $('#own-term').value = '';
+  if (decisive && state.chips.size === 0 && state.terms.length === 0) {
+    say('Say what decided it: pick one, or use your own words.');
     return;
   }
   if (decisive && state.pair.reason_requested && reason.length < state.config.min_reason_chars) {
@@ -255,9 +315,11 @@ async function submitVote(outcome) {
       token: state.pair.token,
       outcome,
       dimensions: decisive ? [...state.chips] : [],
+      terms: decisive ? state.terms : [],
       reason: decisive && reason ? reason : null,
     };
     await api('/api/vote', { method: 'POST', body: JSON.stringify(body) });
+    rememberTerms(body.terms);
     await loadPair();
   } catch (error) {
     if (error.status === 409) await loadPair();  // already recorded, e.g. a double click
@@ -279,6 +341,7 @@ function startRound(round) {
   $('#voting').dataset.round = round;
   $('#round-name').textContent = round === 'visual' ? 'Visual round' : 'Motion round';
   renderChips();
+  loadTerms();
   show('voting');
   loadPair();
 }
@@ -305,7 +368,7 @@ function onKey(event) {
       event.preventDefault();
       submitVote(state.pick);
     } else if (!typing && !modified && /^[1-9]$/.test(key)) {
-      const chip = $$('.chip')[Number(key) - 1];
+      const chip = $$('#chips .chip')[Number(key) - 1];
       if (chip) {
         event.preventDefault();
         toggleChip(chip);
@@ -355,6 +418,11 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const button of $$('.pane .report')) button.addEventListener('click', () => report(button.dataset.outcome));
   for (const button of $$('.pick')) button.addEventListener('click', () => pick(button.dataset.pick));
   $('#back').addEventListener('click', resetDecision);
+  $('#own-term').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.metaKey || event.ctrlKey) return;
+    event.preventDefault();
+    if (addTerm(event.target.value)) event.target.value = '';
+  });
   $('#vote-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const submitter = event.submitter;

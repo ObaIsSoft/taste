@@ -17,6 +17,7 @@ from taste_engine.schemas import Round
 VIEWS = {
     "pair_agreement": ("round", "pair_low", "pair_high"),
     "voter_consistency": ("round", "voter_id"),
+    "voter_effort": ("round", "voter_id"),
     "voter_agreement": ("round", "voter_a_id", "voter_b_id"),
     "round_differences": ("voter_id", "pair_low", "pair_high"),
 }
@@ -53,6 +54,12 @@ def summary(views: dict[str, list[dict[str, Any]]]) -> list[str]:
                     f"{row['same_verdict']} of {row['shared_pairs']} shared pairs "
                     f"({_share(row['same_verdict'], row['shared_pairs'])}), "
                     f"opposite on {row['opposite']}"
+                )
+        for row in views["voter_effort"]:
+            if row["round"] == round_kind:
+                lines.append(
+                    f"  {row['voter']}: {row['votes']} votes, median {row['median_seconds']} s, "
+                    f"{row['fast_votes']} faster than the low-effort limit"
                 )
         for row in views["voter_consistency"]:
             if row["round"] == round_kind:

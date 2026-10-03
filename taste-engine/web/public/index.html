@@ -105,8 +105,15 @@
         <fieldset class="chips">
           <legend id="chips-legend">What decided it?</legend>
           <div id="chips"></div>
+          <div class="own-terms">
+            <label for="own-term" class="sr-only">Your own words</label>
+            <input id="own-term" list="own-term-list" autocomplete="off" enterkeyhint="done"
+                   placeholder="Or say it in your own words, then press Enter">
+            <datalist id="own-term-list"></datalist>
+            <div id="own-chips"></div>
+          </div>
         </fieldset>
-        <div id="reason-block" class="field" hidden>
+        <div id="reason-block" class="field">
           <label for="reason">Why? <span id="reason-hint" class="hint"></span></label>
           <textarea id="reason" rows="2"></textarea>
         </div>

@@ -37,6 +37,7 @@ class VotingFake(FakeSupabase):
     def __init__(self):
         super().__init__()
         self.tokens = itertools.count(1)
+        self.reason_requested = True
         self.tables["dimensions"] = [
             {"id": d, "label": d.title(), "round": "visual", "position": i}
             for i, d in enumerate(VISUAL, 1)
@@ -52,7 +53,7 @@ class VotingFake(FakeSupabase):
                 "token": f"t-{next(self.tokens)}",
                 "left_capture": "0001-original",
                 "right_capture": "0002-original",
-                "reason_requested": True,
+                "reason_requested": self.reason_requested,
             }
         elif name == "cast_vote":
             self.rpc_results[name] = 1
@@ -120,7 +121,9 @@ def test_sign_in_and_vote(site):
         page.get_by_role("button", name="A is better").click()
         expect(page.get_by_text("What made A better?")).to_be_visible()
         page.get_by_role("button", name="Submit vote").click()
-        expect(page.locator("#message")).to_have_text("Pick at least one thing that decided it.")
+        expect(page.locator("#message")).to_have_text(
+            "Say what decided it: pick one, or use your own words."
+        )
         page.get_by_role("button", name="Typography").click()
         page.get_by_role("button", name="Submit vote").click()
         expect(page.locator("#message")).to_contain_text("Write a reason of at least 10")
@@ -255,4 +258,49 @@ def test_phones_stack_recordings_but_tab_between_screens(site, round_name, both_
         shots = os.environ.get("TASTE_UI_SHOTS")
         if shots:
             page.screenshot(path=str(Path(shots) / f"phone-{round_name.split()[0].lower()}.png"))
+        browser.close()
+
+
+def test_designers_can_say_it_in_their_own_words(site):
+    url, fake = site
+    fake.rpc_results["voter_terms"] = [{"term": "editorial pacing", "uses": 3}]
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        _open_round(page, url)
+
+        page.get_by_role("button", name="B is better").click()
+        words = page.get_by_label("Your own words")
+        expect(page.locator("#own-term-list option")).to_have_attribute("value", "editorial pacing")
+        words.fill("tension between serif and grotesk")
+        words.press("Enter")  # adds the words; it does not submit the vote
+        expect(
+            page.get_by_role("button", name='Remove "tension between serif and grotesk"')
+        ).to_be_visible()
+        assert fake.votes() == []
+        words.fill("editorial pacing")  # typed but not added: kept when the vote is submitted
+        page.get_by_label("Why?").fill("The serif headline carries the page on its own.")
+        page.get_by_role("button", name="Submit vote").click()
+        _wait_for_votes(page, fake, 1)
+        vote = fake.votes()[0]
+        assert vote["p_outcome"] == "right" and vote["p_dimensions"] == []
+        assert vote["p_terms"] == ["tension between serif and grotesk", "editorial pacing"]
+        browser.close()
+
+
+def test_the_reason_box_is_always_there_and_optional_unless_asked(site):
+    url, fake = site
+    fake.reason_requested = False
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        _open_round(page, url)
+
+        page.get_by_role("button", name="A is better").click()
+        expect(page.get_by_label("Why?")).to_be_visible()
+        expect(page.locator("#reason-hint")).to_have_text("(optional)")
+        page.get_by_role("button", name="Typography").click()
+        page.get_by_role("button", name="Submit vote").click()  # no reason needed
+        _wait_for_votes(page, fake, 1)
+        assert fake.votes()[0]["p_reason"] is None
         browser.close()
