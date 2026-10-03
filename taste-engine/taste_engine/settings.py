@@ -393,6 +393,7 @@ class Settings(BaseSettings):
     analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
     claude: ClaudeSettings = Field(default_factory=ClaudeSettings)
 
+    anthropic_api_key: SecretStr | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
     supabase_url: str | None = Field(default=None, validation_alias="SUPABASE_URL")
     supabase_service_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("SUPABASE_SERVICE_KEY", "SUPABASE_KEY")

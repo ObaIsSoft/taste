@@ -109,7 +109,10 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
 
 def _cmd_describe(args: argparse.Namespace) -> int:
     settings = get_settings()
-    client = anthropic.Anthropic()
+    if settings.anthropic_api_key is None:
+        log.error("set ANTHROPIC_API_KEY in taste-engine/.env")
+        return 1
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
     if not args.collect_only:
         describe.submit(settings, client, _capture_ids(args), force=args.force)
     if args.no_wait:

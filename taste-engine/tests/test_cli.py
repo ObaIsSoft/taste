@@ -112,3 +112,11 @@ def test_voters_disable(monkeypatch):
     assert main(["voters", "disable", "Frida"]) == 0
     assert fake.updates == [("voters", "Frida", {"active": False})]
     assert main(["voters", "disable", "Nobody"]) == 1
+
+
+def test_describe_without_an_api_key_is_a_clear_error(monkeypatch, caplog):
+    settings = Settings()
+    settings.anthropic_api_key = None
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    assert main(["describe", "--ids", "1"]) == 1
+    assert "ANTHROPIC_API_KEY" in caplog.text
