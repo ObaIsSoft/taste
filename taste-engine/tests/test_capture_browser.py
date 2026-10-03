@@ -149,3 +149,13 @@ def test_a_pop_up_that_appears_on_scroll_is_closed_before_the_next_still(
         grey = Image.open(folder / still.file).convert("L")
         white = sum(grey.histogram()[250:]) / (grey.width * grey.height)
         assert white < 0.01, still.file
+
+
+def test_a_sites_own_header_layer_is_never_clicked(fixture_site_url, fast_settings):
+    _stills_only(fast_settings)
+    record = _capture(_sibling(fixture_site_url, "nav-layer.html"), fast_settings)
+
+    assert record.quality.passed, record.quality
+    assert record.overlay_actions == []  # nothing there is a pop-up, so nothing is clicked
+    assert record.final_url.endswith("/nav-layer.html")
+    assert len(record.stills) == 4

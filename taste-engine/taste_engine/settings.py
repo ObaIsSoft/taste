@@ -85,6 +85,7 @@ class CaptureSettings(BaseModel):
     gate_max_chars: int = 800  # ...and says little
     popup_min_area: float = 0.03  # a floating box smaller than this share of the screen is left
     popup_max_controls: int = 12  # more buttons than this is navigation, not a pop-up
+    popup_candidates: int = 3  # floating boxes tried per pass before giving up
     overlay_cover_ratio: float = 0.1  # consent UI this large left on screen fails QA
     accept_texts: list[str] = Field(
         default_factory=lambda: [

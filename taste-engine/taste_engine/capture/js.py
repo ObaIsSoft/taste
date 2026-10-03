@@ -369,10 +369,17 @@ FIND_POPUP = r"""([minArea, maxControls]) => {
   };
   let best = null;
   for (const el of document.querySelectorAll('body *')) {
+    if (el.closest('[data-taste-not-popup]')) continue;  // answered once and did not go away
     const dialog = el.matches('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]');
     const cs = getComputedStyle(el);
     if ((!dialog && cs.position !== 'fixed') || !shown(el)) continue;
     const r = el.getBoundingClientRect();
+    // A pop-up blocks the page: a click at its centre lands on it. A layer that clicks pass
+    // through (a site's full-screen header holder, say) is part of the layout.
+    const cx = Math.min(Math.max(r.left + r.width / 2, 0), vw - 1);
+    const cy = Math.min(Math.max(r.top + r.height / 2, 0), vh - 1);
+    const hit = document.elementFromPoint(cx, cy);
+    if (!hit || !el.contains(hit)) continue;
     const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
     const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
     if ((w * h) / (vw * vh) < minArea) continue;
@@ -387,6 +394,8 @@ FIND_POPUP = r"""([minArea, maxControls]) => {
   best.el.setAttribute('data-taste-popup', '');
   return { text: (best.el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 300) };
 }"""
+NOT_A_POPUP = "() => { const el = document.querySelector('[data-taste-popup]'); if (el) { el.removeAttribute('data-taste-popup'); el.setAttribute('data-taste-not-popup', ''); } }"
+HITS_ELEMENT = "(el, [x, y]) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit)); }"
 POPUP_GONE = "() => { const el = document.querySelector('[data-taste-popup]'); if (!el) return true; const cs = getComputedStyle(el), r = el.getBoundingClientRect(); return cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) <= 0.05 || r.width === 0 || r.height === 0; }"
 SCROLL_INNER = r"""(distance) => {
   let best = null, area = 0;

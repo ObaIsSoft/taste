@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -69,13 +70,17 @@ def _click(page: Page, locator: Locator, cfg: CaptureSettings) -> bool:
         return True
     except PlaywrightError:
         pass
-    try:  # something covers the element: click its centre like a person would
+    try:  # the click was refused (still moving, say): click its centre like a person would,
+        # but only if the centre really is this element, never whatever lies on top of it
         box = target.bounding_box(timeout=cfg.click_timeout_s * 1000)
+        if not box:
+            return False
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        if not target.evaluate(js.HITS_ELEMENT, [x, y]):
+            return False
     except PlaywrightError:
         return False
-    if not box:
-        return False
-    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.click(x, y)
     return True
 
 
@@ -134,15 +139,15 @@ def _answer(page: Page, layer: Locator, texts: list[str], cfg: CaptureSettings) 
     return None
 
 
-def _close_popup(page: Page, cfg: CaptureSettings) -> str | None:
+def _gone(page: Page, cfg: CaptureSettings) -> bool:
+    page.wait_for_timeout(cfg.settle_poll_s * 1000)
     try:
-        popup = page.evaluate(js.FIND_POPUP, [cfg.popup_min_area, cfg.popup_max_controls])
+        return bool(page.evaluate(js.POPUP_GONE))
     except PlaywrightError:
-        return None
-    if popup is None:
-        return None
-    layer = page.locator("[data-taste-popup]")
-    text = popup["text"]
+        return True  # the page moved on; the navigation guard deals with it
+
+
+def _try_popup(page: Page, layer: Locator, text: str, cfg: CaptureSettings) -> str | None:
     if cued(text, cfg.consent_cues):
         texts = cfg.accept_texts
     elif cued(text, cfg.gate_cues):
@@ -150,46 +155,49 @@ def _close_popup(page: Page, cfg: CaptureSettings) -> str | None:
     else:
         texts = cfg.dismiss_texts
     answer = _answer(page, layer, texts, cfg)
-    if answer:
+    if answer and _gone(page, cfg):
         return f"popup:{answer}"
     close = layer.get_by_role("button", name=_CLOSE_LABEL)  # an icon button labelled "Close"
-    if close.count() and _click(page, close, cfg):
+    if close.count() and _click(page, close, cfg) and _gone(page, cfg):
         return "popup:close"
     page.keyboard.press("Escape")
-    page.wait_for_timeout(cfg.settle_poll_s * 1000)
-    try:
-        return "popup:escape" if page.evaluate(js.POPUP_GONE) else None
-    except PlaywrightError:
-        return None
+    return "popup:escape" if _gone(page, cfg) else None
 
 
-def clear_popups(page: Page, cfg: CaptureSettings) -> list[str]:
-    """Answer cookie boxes and pop-ups that appeared late, without scrolling: run before
-    each still, so a newsletter offer on a timer never covers a screenshot."""
-    actions = []
-    for _ in range(cfg.overlay_rounds):
-        action = _accept_consent(page, cfg) or _close_popup(page, cfg)
-        if not action:
-            break
-        actions.append(action)
-        page.wait_for_timeout(cfg.settle_poll_s * 1000)
-    return actions
+def _close_popup(page: Page, cfg: CaptureSettings) -> str | None:
+    """Close the floating box on top of the page. A candidate that does not go away when
+    answered was not a pop-up (a site's own panel, say): it is marked and never tried again."""
+    for _ in range(cfg.popup_candidates):
+        try:
+            popup = page.evaluate(js.FIND_POPUP, [cfg.popup_min_area, cfg.popup_max_controls])
+        except PlaywrightError:
+            return None
+        if popup is None:
+            return None
+        action = _try_popup(page, page.locator("[data-taste-popup]"), popup["text"], cfg)
+        if action:
+            return action
+        try:
+            page.evaluate(js.NOT_A_POPUP)
+        except PlaywrightError:
+            return None
+    return None
 
 
-def dismiss_overlays(page: Page, cfg: CaptureSettings) -> list[str]:
-    """Click through consent banners, gates and pop-ups. Returns the actions taken, in order.
+Step = Callable[[Page, CaptureSettings], "str | None"]
 
-    A click that opened another page was not a way past an overlay: the browser goes
-    back, the step is recorded, and no more clicks are tried.
-    """
+
+def _run(page: Page, cfg: CaptureSettings, steps: list[Step], settle_s: float) -> list[str]:
+    """Run the steps until none acts. A click that opened another page was not a way past an
+    overlay: the browser goes back, the step is recorded, and no more clicks are tried."""
     actions: list[str] = []
     landed = page.url
     for _ in range(cfg.overlay_rounds):
-        action = _accept_consent(page, cfg) or _pass_gate(page, cfg) or _close_popup(page, cfg)
+        action = next((a for step in steps if (a := step(page, cfg))), None)
         if not action:
             break
         actions.append(action)
-        page.wait_for_timeout(cfg.screen_settle_s * 1000)
+        page.wait_for_timeout(settle_s * 1000)
         close_extra_pages(page.context, keep=page)
         if same_page(page.url, landed):
             continue
@@ -200,3 +208,15 @@ def dismiss_overlays(page: Page, cfg: CaptureSettings) -> list[str]:
             log.warning("could not return from %s", page.url)
         break
     return actions
+
+
+def dismiss_overlays(page: Page, cfg: CaptureSettings) -> list[str]:
+    """Click through consent banners, gates and pop-ups after the page loads. Returns the
+    actions taken, in order."""
+    return _run(page, cfg, [_accept_consent, _pass_gate, _close_popup], cfg.screen_settle_s)
+
+
+def clear_popups(page: Page, cfg: CaptureSettings) -> list[str]:
+    """Answer cookie boxes and pop-ups that appeared late, without scrolling: run before each
+    still, so a newsletter offer on a timer never covers a screenshot."""
+    return _run(page, cfg, [_accept_consent, _close_popup], cfg.settle_poll_s)

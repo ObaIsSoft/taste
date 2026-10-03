@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Six Studio</title>
+<style>
+  body { margin: 0; font-family: Helvetica, sans-serif; background: #333; color: #fff; }
+  section { height: 900px; display: grid; place-items: center; font-size: 56px; }
+  section:nth-child(even) { background: #444; }
+  /* the site's own header holder: full screen, fixed, and clicks pass through it */
+  #layer { position: fixed; inset: 0; z-index: 200; pointer-events: none; }
+  #layer nav { position: absolute; top: 24px; right: 32px; pointer-events: auto; font-size: 28px; }
+  #layer nav a { color: #fff; margin-left: 16px; }
+  /* a "Close" label for a contact panel, sitting right under the Contact link */
+  #close { position: absolute; top: 24px; right: 32px; font-size: 28px; color: transparent; }
+</style>
+</head>
+<body>
+<main><section>Projects</section><section>Commerce</section><section>Notes</section><section>Feed</section></main>
+<div id="layer">
+  <span id="close">Close</span>
+  <nav><a href="/projects">Projects</a><a href="/info">Info</a><a href="other.html">Contact</a></nav>
+</div>
+</body>
+</html>
