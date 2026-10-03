@@ -34,6 +34,10 @@ create table voting_config (
   -- that fast, and it caps what a script holding a leaked invite code can do.
   min_vote_seconds numeric not null default 1,
   fast_vote_seconds numeric not null default 3,  -- faster votes count as low effort in reports
+  -- Votes a voter is asked for per round, calibration included; reaching it shows a thank-you,
+  -- and voting may go on.
+  target_votes integer not null default 200 check (target_votes >= 0),
+  max_client_chars integer not null default 4000 check (max_client_chars > 0),  -- see votes.client
   resume_minutes integer not null default 60  -- an unanswered pair is served again within this
 );
 insert into voting_config default values;
@@ -129,6 +133,10 @@ create table votes (
   dimensions text[] not null default '{}',  -- from the dimensions table: the shared terms
   own_terms text[] not null default '{}',  -- the voter's own words, never from a list
   reason text,
+  -- How the vote was cast, for studying bias: screen size, input, layout, session and position
+  -- in it. An open object, so a new measurement needs no schema change. What the voter looked at
+  -- is in vote_events.
+  client jsonb not null default '{}' check (jsonb_typeof(client) = 'object'),
   seconds_to_vote numeric not null,
   created_at timestamptz not null default now(),
   check (left_capture <> right_capture)
@@ -141,7 +149,12 @@ create index votes_voter on votes (voter_id, round);
 create table vote_events (
   id bigserial primary key,
   token uuid not null references served_pairs (token),
-  kind text not null check (kind in ('play_left', 'play_right', 'open_live_left', 'open_live_right')),
+  kind text not null check (kind in (
+    'play_left', 'play_right',  -- a reel was played
+    'open_live_left', 'open_live_right',  -- the live site was opened
+    'view_left', 'view_right',  -- on a phone, that site's tab was chosen
+    'scroll_left', 'scroll_right'  -- that site's screens were scrolled past the first
+  )),
   at timestamptz not null default now()
 );
 
@@ -183,7 +196,7 @@ select v.id, v.voter_id, v.round, v.pair_low, v.pair_high, s.source,
          when v.outcome = 'cant_decide' then 'unsure'
          else 'broken'
        end as verdict,
-       v.dimensions, v.own_terms, v.reason, v.seconds_to_vote,
+       v.dimensions, v.own_terms, v.reason, v.seconds_to_vote, v.client,
        v.seconds_to_vote < c.fast_vote_seconds as fast,
        v.created_at
   from votes v
@@ -238,15 +251,79 @@ select r.round, r.voter_id, vt.name as voter,
  group by r.round, r.voter_id, vt.name;
 
 -- How each voter votes: how many, how fast, and how many faster than fast_vote_seconds.
+-- Fatigue: the median time per vote early in a session (its first 10 votes) and late (after its
+-- 20th), from the session position the voting page records with each vote.
 create view voter_effort with (security_invoker = true) as
+with positioned as (
+  select v.*,
+         case when v.client ->> 'index' ~ '^[0-9]+$' then (v.client ->> 'index')::int end
+           as position
+    from vote_verdicts v
+)
 select v.round, v.voter_id, vt.name as voter,
        count(*) as votes,
        count(*) filter (where v.fast) as fast_votes,
        round(percentile_cont(0.5) within group (order by v.seconds_to_vote)::numeric, 1)
-         as median_seconds
-  from vote_verdicts v
+         as median_seconds,
+       round((percentile_cont(0.5) within group (order by v.seconds_to_vote)
+              filter (where v.position <= 10))::numeric, 1) as early_median_seconds,
+       round((percentile_cont(0.5) within group (order by v.seconds_to_vote)
+              filter (where v.position > 20))::numeric, 1) as late_median_seconds,
+       count(distinct v.client ->> 'session') as sessions
+  from positioned v
   join voters vt on vt.id = v.voter_id
  group by v.round, v.voter_id, vt.name;
+
+-- What the voter looked at before voting, from vote_events: on a phone (one site at a time,
+-- A first) whether they opened B; whether they scrolled each site's screens; whether they played
+-- both reels; whether they opened a live site.
+create view vote_attention with (security_invoker = true) as
+select v.id as vote_id, v.token, v.voter_id, v.round,
+       coalesce(v.client ->> 'layout', 'unknown') as layout,
+       (v.client ->> 'layout') is distinct from 'tabs'
+         or exists (select 1 from vote_events e where e.token = v.token and e.kind = 'view_right')
+         as saw_both,
+       exists (select 1 from vote_events e where e.token = v.token and e.kind = 'scroll_left')
+         and exists (select 1 from vote_events e where e.token = v.token and e.kind = 'scroll_right')
+         as scrolled_both,
+       exists (select 1 from vote_events e where e.token = v.token and e.kind = 'play_left')
+         and exists (select 1 from vote_events e where e.token = v.token and e.kind = 'play_right')
+         as played_both,
+       exists (select 1 from vote_events e where e.token = v.token and e.kind like 'open_live_%')
+         as opened_live
+  from votes v;
+
+-- How each voter leans, beyond taste: toward a side, toward ties or "can't decide", toward the
+-- listed dimensions, and how much they looked. With balanced sides, left_share should sit near
+-- 0.5. Split by layout: a phone (one site at a time) and a desktop invite different habits.
+create view voter_bias with (security_invoker = true) as
+select v.round, v.voter_id, vt.name as voter, a.layout,
+       count(*) as votes,
+       round(avg((v.outcome = 'left')::int) filter (where v.outcome in ('left', 'right')), 3)
+         as left_share,
+       round(avg((v.outcome = 'equally_good')::int), 3) as tie_share,
+       round(avg((v.outcome = 'cant_decide')::int), 3) as cant_decide_share,
+       round(avg((cardinality(v.own_terms) > 0)::int) filter (where v.outcome in ('left', 'right')), 3)
+         as own_words_share,
+       round(avg(a.saw_both::int), 3) as saw_both_share,
+       round(avg(a.scrolled_both::int) filter (where v.round = 'visual'), 3) as scrolled_both_share,
+       round(avg(a.played_both::int) filter (where v.round = 'motion'), 3) as played_both_share,
+       round(avg(a.opened_live::int), 3) as opened_live_share
+  from votes v
+  join vote_attention a on a.vote_id = v.id
+  join voters vt on vt.id = v.voter_id
+ group by v.round, v.voter_id, vt.name, a.layout;
+
+-- How often a site wins by the language of its page (from Claude's description), all voters
+-- together: a lean toward one language suggests readability, not craft, is deciding.
+create view language_bias with (security_invoker = true) as
+select v.round, coalesce(c.description -> 'description' ->> 'language', 'unknown') as language,
+       count(*) as appearances,
+       round(avg(((v.outcome = 'left') = (c.id = v.left_capture))::int), 3) as win_share
+  from votes v
+  join captures c on c.id in (v.left_capture, v.right_capture)
+ where v.outcome in ('left', 'right')
+ group by v.round, 2;
 
 -- How often two voters gave the same verdict on the pairs both judged. opposite means each
 -- preferred a different capture.
@@ -276,6 +353,7 @@ select v.voter_id, vt.name as voter, v.pair_low, v.pair_high,
        v.verdict <> m.verdict and 'tie' not in (v.verdict, m.verdict) as opposite,
        v.dimensions as visual_dimensions, m.dimensions as motion_dimensions,
        v.own_terms as visual_terms, m.own_terms as motion_terms,
+       (v.client ->> 'session') = (m.client ->> 'session') as same_session,
        v.reason as visual_reason, m.reason as motion_reason
   from first_verdicts v
   join first_verdicts m
@@ -310,6 +388,7 @@ declare
   flip boolean;
   contested boolean;
   asked_in_other_round boolean;
+  lean bigint;
   result served_pairs;
 begin
   select * into cfg from voting_config;
@@ -417,7 +496,14 @@ begin
      limit 1;
     flip := first_left = a;  -- the side each site was on last time, reversed
   else
-    flip := random() < 0.5;
+    -- Balanced sides: the site that has been on the left less often (relative to the right)
+    -- goes on the left, so every site is seen about as often on each side; ties are random.
+    select coalesce(sum(case when s.left_capture = a then 1 when s.right_capture = a then -1 end), 0)
+         - coalesce(sum(case when s.left_capture = b then 1 when s.right_capture = b then -1 end), 0)
+      into lean
+      from served_pairs s
+     where s.round = p_round and (a in (s.left_capture, s.right_capture) or b in (s.left_capture, s.right_capture));
+    flip := lean > 0 or (lean = 0 and random() < 0.5);
   end if;
 
   -- A reason is asked on 1 in reason_every pairs at random, and wherever it can explain a
@@ -453,7 +539,7 @@ $$;
 
 create function cast_vote(
   p_code text, p_token uuid, p_outcome vote_outcome, p_dimensions text[], p_reason text,
-  p_terms text[] default '{}'
+  p_terms text[] default '{}', p_client jsonb default '{}'
 ) returns bigint
 language plpgsql as $$
 declare
@@ -488,6 +574,10 @@ begin
   if cardinality(terms) > cfg.max_own_terms then
     raise exception 'add at most % of your own words', cfg.max_own_terms using errcode = '22023';
   end if;
+  if jsonb_typeof(coalesce(p_client, '{}')) <> 'object'
+     or length(p_client::text) > cfg.max_client_chars then
+    raise exception 'client details must be a small object' using errcode = '22023';
+  end if;
   if exists (select 1 from unnest(terms) t where length(t) > cfg.max_term_chars) then
     raise exception 'keep each of your own words under % characters', cfg.max_term_chars
       using errcode = '22023';
@@ -503,10 +593,11 @@ begin
 
   insert into votes (
     token, voter_id, round, left_capture, right_capture, outcome, dimensions, own_terms, reason,
-    seconds_to_vote
+    seconds_to_vote, client
   ) values (
     p_token, voter.id, pair.round, pair.left_capture, pair.right_capture, p_outcome, dims, terms,
-    nullif(trim(p_reason), ''), extract(epoch from now() - pair.served_at)
+    nullif(trim(p_reason), ''), extract(epoch from now() - pair.served_at),
+    coalesce(p_client, '{}')
   )
   returning id into vote_id;
   update served_pairs set used_at = now() where token = p_token;
@@ -552,7 +643,9 @@ end;
 $$;
 
 create function voter_progress(p_code text)
-returns table (round round_kind, calibration_done bigint, calibration_total bigint, votes bigint)
+returns table (
+  round round_kind, calibration_done bigint, calibration_total bigint, votes bigint, target bigint
+)
 language plpgsql stable as $$
 declare
   voter voters := voter_for(p_code);
@@ -565,7 +658,8 @@ begin
               where v.voter_id = voter.id and v.round = r.kind
                 and v.pair_low = cp.capture_a and v.pair_high = cp.capture_b)),
          (select count(*) from open_calibration_pairs cp where cp.round = r.kind),
-         (select count(*) from votes v where v.voter_id = voter.id and v.round = r.kind)
+         (select count(*) from votes v where v.voter_id = voter.id and v.round = r.kind),
+         (select c.target_votes::bigint from voting_config c)
     from unnest(enum_range(null::round_kind)) as r (kind);
 end;
 $$;

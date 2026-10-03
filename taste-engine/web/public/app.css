@@ -178,7 +178,7 @@ kbd { display: none; }
   transform-origin: left;
 }
 
-.progress.is-calibrating .meter { display: block; }
+.progress.has-goal .meter { display: block; }
 
 .menu { position: relative; }
 

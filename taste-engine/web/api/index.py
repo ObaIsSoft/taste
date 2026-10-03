@@ -24,7 +24,16 @@ from supabase import Client, create_client
 PUBLIC_DIR = Path(__file__).resolve().parent.parent / "public"
 SIGNED_URL_SECONDS = int(os.environ.get("TASTE_SIGNED_URL_SECONDS", "3600"))
 ROUNDS = ("visual", "motion")
-EVENTS = ("play_left", "play_right", "open_live_left", "open_live_right")
+EVENTS = (
+    "play_left",
+    "play_right",
+    "open_live_left",
+    "open_live_right",
+    "view_left",
+    "view_right",
+    "scroll_left",
+    "scroll_right",
+)
 
 # SQLSTATE raised by the voting functions -> HTTP status
 STATUS_FOR = {
@@ -170,6 +179,9 @@ def vote():
     dimensions = body.get("dimensions") or []
     own_terms = body.get("terms") or []
     reason = body.get("reason")
+    client = body.get("client") or {}
+    if not isinstance(client, dict):  # its size limit is in voting_config, checked by cast_vote
+        raise BadRequest("client must be an object")
     if not isinstance(dimensions, list) or not all(isinstance(d, str) for d in dimensions):
         raise BadRequest("dimensions must be a list of names")
     if not isinstance(own_terms, list) or not all(isinstance(t, str) for t in own_terms):
@@ -185,6 +197,7 @@ def vote():
             "p_dimensions": dimensions,
             "p_reason": reason,
             "p_terms": own_terms,
+            "p_client": client,
         },
     )
     return jsonify(vote_id=vote_id)

@@ -110,6 +110,10 @@ SCHEMA: dict[str, Any] = {
             ),
         },
         "text_over_image": {"type": "boolean"},
+        "language": {
+            "type": "string",
+            "description": "the main language of the page's text as a two-letter code, or none",
+        },
         "obstruction": _choice(
             "none",
             "cookie_or_privacy_notice",
@@ -138,6 +142,7 @@ SCHEMA: dict[str, Any] = {
         "density",
         "visible_elements",
         "text_over_image",
+        "language",
         "obstruction",
         "page_state",
         "notes",

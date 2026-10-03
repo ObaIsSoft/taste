@@ -116,3 +116,24 @@ def test_terms_are_the_voters_own(api):
     fake.rpc_results["voter_terms"] = [{"term": "editorial pacing", "uses": 2}]
     assert client.get("/api/terms?round=visual").get_json() == {"terms": ["editorial pacing"]}
     assert fake.calls[-1] == ("voter_terms", {"p_code": "code-ada", "p_round": "visual"})
+
+
+def test_how_a_vote_was_cast_passes_through_and_must_be_an_object(api):
+    client, fake = api
+    fake.rpc_results["cast_vote"] = 9
+    details = {"session": "s1", "index": 3, "layout": "tabs", "viewport_width": 390}
+    body = {"token": "t-1", "outcome": "cant_decide", "client": details}
+    assert client.post("/api/vote", json=body).status_code == 200
+    assert fake.calls[-1][1]["p_client"] == details
+    body["client"] = "phone"
+    assert client.post("/api/vote", json=body).status_code == 400
+
+
+def test_viewing_and_scrolling_are_events(api):
+    client, fake = api
+    for kind in ("view_right", "scroll_left"):
+        assert client.post("/api/event", json={"token": "t-1", "kind": kind}).status_code == 200
+    assert [params["p_kind"] for name, params in fake.calls if name == "log_event"] == [
+        "view_right",
+        "scroll_left",
+    ]

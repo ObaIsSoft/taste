@@ -67,7 +67,29 @@ def test_summary_counts_agreement_and_differences():
                 "votes": 120,
                 "fast_votes": 3,
                 "median_seconds": 8.5,
+                "early_median_seconds": 10.0,
+                "late_median_seconds": 6.0,
+                "sessions": 4,
             }
+        ],
+        "voter_bias": [
+            {
+                "round": "visual",
+                "voter": "Ada",
+                "layout": "side_by_side",
+                "left_share": 0.52,
+                "tie_share": 0.1,
+                "cant_decide_share": 0.05,
+                "own_words_share": 0.3,
+                "saw_both_share": 1.0,
+                "scrolled_both_share": 0.8,
+                "played_both_share": None,
+                "opened_live_share": 0.02,
+            }
+        ],
+        "language_bias": [
+            {"round": "visual", "language": "en", "win_share": 0.51, "appearances": 300},
+            {"round": "visual", "language": "it", "win_share": 0.4, "appearances": 20},
         ],
         "voter_consistency": [
             {
@@ -88,7 +110,11 @@ def test_summary_counts_agreement_and_differences():
         "Visual round",
         "  panel: 75% mean agreement on 2 pairs judged by 2 or more voters; split on 1",
         "  Ada and Bo: same verdict on 3 of 4 shared pairs (75%), opposite on 1",
-        "  Ada: 120 votes, median 8.5 s, 3 faster than the low-effort limit",
+        "  Ada: 120 votes in 4 session(s), median 8.5 s (early 10.0, late 6.0), "
+        "3 faster than the low-effort limit",
+        "  Ada on side_by_side: left 0.52, tie 0.1, can't decide 0.05, own words 0.3, "
+        "saw both 1.0, scrolled both 0.8, opened live 0.02",
+        "  wins by language: en 0.51 (300), it 0.4 (20)",
         "  Ada on repeats: same verdict on 9 of 10, flipped on 1",
         "Motion round",
         "  panel: no pair judged by 2 or more voters yet",

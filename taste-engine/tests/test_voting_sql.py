@@ -139,10 +139,10 @@ def test_calibration_then_swapped_repeats_then_adaptive(db):
     assert "0004-original" in (pair["left"], pair["right"])  # the only pairs Ada has not judged
     _vote(db, pair, outcome="equally_good", dims="{}")
 
-    [[_, done, total, votes]] = db.run(
+    [[_, done, total, votes, target]] = db.run(
         "select * from voter_progress('code-ada') where round = 'visual'"
     )
-    assert (done, total, votes) == ("3", "3", "6")
+    assert (done, total, votes, target) == ("3", "3", "6", "200")  # the target is in voting_config
 
 
 def test_vote_rules_are_enforced_by_the_database(db):
@@ -204,7 +204,8 @@ def _add_sites_and_voters(db):
           from generate_series(5, 8) i
         on conflict do nothing;
         insert into voters (name, invite_code)
-        values ('Cy', 'code-cy'), ('Di', 'code-di'), ('Ed', 'code-ed'), ('Fi', 'code-fi')
+        values ('Cy', 'code-cy'), ('Di', 'code-di'), ('Ed', 'code-ed'), ('Fi', 'code-fi'),
+               ('Gi', 'code-gi')
         on conflict do nothing;
         """
     )
@@ -353,3 +354,60 @@ def test_voters_can_say_it_in_their_own_words(db):
         ["tension between serif and grotesk", "1"],
     ]
     assert db.run("select count(*) from voter_terms('code-cy', 'visual')") == [["0"]]
+
+
+def test_sides_are_balanced_per_site(db):
+    _add_sites_and_voters(db)
+    busy, other = _c(7), _c(8)
+    keep = ", ".join(f"'{c}'" for c in (busy, other))
+    db.run(f"update captures set in_pool = id in ({keep})")
+    try:
+        for _ in range(3):  # the busy site has been shown on the left three times already
+            _serve(db, "code-cy", busy, other, "motion")
+        pair = _next(db, code="code-gi", round_kind="motion")
+        assert (pair["left"], pair["right"]) == (other, busy)
+    finally:
+        db.run("update captures set in_pool = true")
+
+
+def test_how_a_vote_was_cast_is_recorded_and_processed(db):
+    _add_sites_and_voters(db)
+    client = '{"session": "s1", "index": 1, "layout": "tabs", "viewport_width": 390}'
+    pair = _serve(db, "code-gi", _c(5), _c(8))
+    db.run(f"insert into vote_events (token, kind) values ('{pair['token']}', 'scroll_left')")
+    db.run(
+        f"select cast_vote('code-gi', '{pair['token']}', 'left', '{{whitespace}}', 'reason here', "
+        f"'{{}}', '{client}')"
+    )
+    assert db.run("select client ->> 'viewport_width' from votes order by id desc limit 1") == [
+        ["390"]
+    ]
+    # on a phone the voter never opened B, and scrolled only A: both are visible in the bias view
+    assert db.run(
+        "select layout, votes, left_share, saw_both_share, scrolled_both_share from voter_bias "
+        "where voter = 'Gi' and round = 'visual'"
+    ) == [["tabs", "1", "1.000", "0.000", "0.000"]]
+    assert db.run(
+        "select sessions, early_median_seconds is not null from voter_effort "
+        "where voter = 'Gi' and round = 'visual'"
+    ) == [["1", "t"]]
+    pair = _serve(db, "code-gi", _c(6), _c(7))
+    assert "small object" in db.error(
+        f"select cast_vote('code-gi', '{pair['token']}', 'left', '{{whitespace}}', 'reason', "
+        f"'{{}}', '[1, 2]')"
+    )
+
+
+def test_wins_by_language_come_from_the_descriptions(db):
+    _add_sites_and_voters(db)
+    db.run(
+        f"""update captures set description = '{{"description": {{"language": "it"}}}}'
+            where id = '{_c(5)}'"""
+    )
+    rows = dict(
+        (language, (appearances, share))
+        for language, appearances, share in db.run(
+            "select language, appearances, win_share from language_bias where round = 'visual'"
+        )
+    )
+    assert "it" in rows and "unknown" in rows

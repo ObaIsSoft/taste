@@ -18,6 +18,8 @@ VIEWS = {
     "pair_agreement": ("round", "pair_low", "pair_high"),
     "voter_consistency": ("round", "voter_id"),
     "voter_effort": ("round", "voter_id"),
+    "voter_bias": ("round", "voter_id", "layout"),
+    "language_bias": ("round", "language"),
     "voter_agreement": ("round", "voter_a_id", "voter_b_id"),
     "round_differences": ("voter_id", "pair_low", "pair_high"),
 }
@@ -58,9 +60,32 @@ def summary(views: dict[str, list[dict[str, Any]]]) -> list[str]:
         for row in views["voter_effort"]:
             if row["round"] == round_kind:
                 lines.append(
-                    f"  {row['voter']}: {row['votes']} votes, median {row['median_seconds']} s, "
+                    f"  {row['voter']}: {row['votes']} votes in {row['sessions']} session(s), "
+                    f"median {row['median_seconds']} s (early {row['early_median_seconds']}, "
+                    f"late {row['late_median_seconds']}), "
                     f"{row['fast_votes']} faster than the low-effort limit"
                 )
+        for row in views["voter_bias"]:
+            if row["round"] == round_kind:
+                looked = (
+                    f"scrolled both {row['scrolled_both_share']}"
+                    if round_kind is Round.VISUAL
+                    else f"played both {row['played_both_share']}"
+                )
+                lines.append(
+                    f"  {row['voter']} on {row['layout']}: left {row['left_share']}, "
+                    f"tie {row['tie_share']}, can't decide {row['cant_decide_share']}, "
+                    f"own words {row['own_words_share']}, saw both {row['saw_both_share']}, "
+                    f"{looked}, opened live {row['opened_live_share']}"
+                )
+        languages = [r for r in views["language_bias"] if r["round"] == round_kind]
+        if languages:
+            lines.append(
+                "  wins by language: "
+                + ", ".join(
+                    f"{r['language']} {r['win_share']} ({r['appearances']})" for r in languages
+                )
+            )
         for row in views["voter_consistency"]:
             if row["round"] == round_kind:
                 lines.append(

@@ -59,8 +59,20 @@ class VotingFake(FakeSupabase):
             self.rpc_results[name] = 1
         elif name == "voter_progress":
             self.rpc_results[name] = [
-                {"round": "visual", "calibration_done": 3, "calibration_total": 91, "votes": 3},
-                {"round": "motion", "calibration_done": 0, "calibration_total": 0, "votes": 0},
+                {
+                    "round": "visual",
+                    "calibration_done": 3,
+                    "calibration_total": 91,
+                    "votes": 3,
+                    "target": 200,
+                },
+                {
+                    "round": "motion",
+                    "calibration_done": 0,
+                    "calibration_total": 0,
+                    "votes": 0,
+                    "target": 200,
+                },
             ]
         return super().rpc(name, params)
 
@@ -69,6 +81,9 @@ class VotingFake(FakeSupabase):
 
     def votes(self):
         return [params for name, params in self.calls if name == "cast_vote"]
+
+    def events(self):
+        return [params["p_kind"] for name, params in self.calls if name == "log_event"]
 
 
 @pytest.fixture
@@ -303,4 +318,30 @@ def test_the_reason_box_is_always_there_and_optional_unless_asked(site):
         page.get_by_role("button", name="Submit vote").click()  # no reason needed
         _wait_for_votes(page, fake, 1)
         assert fake.votes()[0]["p_reason"] is None
+        browser.close()
+
+
+def test_how_each_vote_was_seen_is_recorded(site):
+    url, fake = site
+    screens = [f"0002-original/screen-{i}.jpg" for i in range(1, 5)]  # enough to scroll
+    fake.tables["captures"][1]["stills"] = screens
+    fake.images.update({path: _still("#b45309", path) for path in screens})
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        _open_round(page, url, width=390, height=844)
+
+        page.get_by_role("tab", name="Site B").click()  # on a phone, opening B is an event
+        page.locator("#card-right .strip").evaluate("strip => strip.scrollTop = 400")
+        for _ in range(20):
+            if {"view_right", "scroll_right"} <= set(fake.events()):
+                break
+            page.wait_for_timeout(100)
+        assert {"view_right", "scroll_right"} <= set(fake.events())
+
+        page.keyboard.press("s")
+        _wait_for_votes(page, fake, 1)
+        details = fake.votes()[0]["p_client"]
+        assert details["layout"] == "tabs" and details["pointer"] in ("coarse", "fine")
+        assert details["viewport_width"] == 390 and details["index"] == 1 and details["session"]
         browser.close()

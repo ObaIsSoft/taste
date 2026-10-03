@@ -12,8 +12,33 @@ const OUTCOME_KEYS = { e: 'equally_good', s: 'cant_decide' };
 
 const state = {
   code: null, name: null, config: null, round: null, pair: null, pick: null, chips: new Set(), terms: [],
-  busy: false,
+  busy: false, cast: 0,
 };
+
+// One id per visit to the page, and the position of each vote within it: the database uses them
+// to see fatigue (late votes in a long session) and whether two rounds were judged together.
+const SESSION = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+  : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+// How this vote was seen: one site at a time on a phone, stacked, or side by side.
+function layout() {
+  if (getComputedStyle($('.side-switch')).display !== 'none') return 'tabs';
+  const left = $('#card-left').getBoundingClientRect();
+  const right = $('#card-right').getBoundingClientRect();
+  return right.top >= left.bottom - 1 ? 'stacked' : 'side_by_side';
+}
+
+function clientDetails() {
+  return {
+    session: SESSION,
+    index: state.cast + 1,
+    layout: layout(),
+    viewport_width: window.innerWidth,
+    viewport_height: window.innerHeight,
+    pixel_ratio: window.devicePixelRatio || 1,
+    pointer: window.matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine',
+  };
+}
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -60,6 +85,8 @@ function progressLabel(row) {
   if (row.calibration_total > 0 && row.calibration_done < row.calibration_total) {
     return `Calibration ${row.calibration_done} of ${row.calibration_total}`;
   }
+  if (row.target > 0 && row.votes >= row.target) return 'Target reached, thank you';
+  if (row.target > 0) return `${row.votes} of ${row.target} votes`;
   if (row.votes === 0) return 'No votes yet';
   return `${row.votes} vote${row.votes === 1 ? '' : 's'}`;
 }
@@ -73,9 +100,11 @@ function renderProgress(progress) {
   const row = rows.find((r) => r.round === state.round);
   if (!row) return;
   const calibrating = row.calibration_total > 0 && row.calibration_done < row.calibration_total;
+  const share = calibrating ? row.calibration_done / row.calibration_total
+    : (row.target > 0 ? Math.min(1, row.votes / row.target) : 0);
   $('#progress').textContent = progressLabel(row);
-  $('#progress-wrap').classList.toggle('is-calibrating', calibrating);
-  $('#progress-bar').style.setProperty('--done', calibrating ? row.calibration_done / row.calibration_total : 0);
+  $('#progress-wrap').classList.toggle('has-goal', calibrating || row.target > 0);
+  $('#progress-bar').style.setProperty('--done', share);
 }
 
 async function refreshProgress() {
@@ -219,6 +248,7 @@ function renderSide(side, data) {
     strip.className = 'strip';
     strip.tabIndex = 0;
     strip.setAttribute('aria-label', `${name}: ${data.stills.length} screens, scroll for more`);
+    strip.addEventListener('scroll', () => logEvent(`scroll_${side}`), { once: true });
     data.stills.forEach((url, index) => {
       const image = document.createElement('img');
       Object.assign(image, { src: url, alt: `${name}, screen ${index + 1}`, decoding: 'async' });
@@ -317,8 +347,10 @@ async function submitVote(outcome) {
       dimensions: decisive ? [...state.chips] : [],
       terms: decisive ? state.terms : [],
       reason: decisive && reason ? reason : null,
+      client: clientDetails(),
     };
     await api('/api/vote', { method: 'POST', body: JSON.stringify(body) });
+    state.cast += 1;
     rememberTerms(body.terms);
     await loadPair();
   } catch (error) {
@@ -413,7 +445,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (event) => {
     if ($('#menu').open && !$('#menu').contains(event.target)) $('#menu').open = false;
   });
-  for (const side of SIDES) $(`#tab-${side}`).addEventListener('click', () => selectTab(side));
+  for (const side of SIDES) {
+    $(`#tab-${side}`).addEventListener('click', () => {
+      selectTab(side);
+      logEvent(`view_${side}`);  // on a phone: which site the voter chose to look at
+    });
+  }
   for (const link of $$('.live')) link.addEventListener('click', () => logEvent(`open_live_${link.dataset.side}`));
   for (const button of $$('.pane .report')) button.addEventListener('click', () => report(button.dataset.outcome));
   for (const button of $$('.pick')) button.addEventListener('click', () => pick(button.dataset.pick));
