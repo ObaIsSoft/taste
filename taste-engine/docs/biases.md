@@ -22,8 +22,9 @@ Nothing about this is shown to voters while they vote.
 | What the voter looked at: phone tab opened, screens scrolled, reels played, live site opened | `vote_events` (`view_*`, `scroll_*`, `play_*`, `open_live_*`) | The voting page, as it happens |
 | The page's language, and whether anything covered it | `captures.description` (`language`, `obstruction`, `page_state`) | `taste describe`, then `taste publish` |
 
-The limits (the vote target, the size of `client`, the low-effort threshold) live in
-`voting_config`.
+The limits (the size of `client`, the low-effort threshold) live in `voting_config`, and each
+round's vote target in `round_targets`. `voting_facts()` gathers them for `/api/config`, which the
+voting page and the voter guide both read; the dimension definitions come from `dimensions`.
 
 ## Each bias
 
@@ -36,7 +37,7 @@ The limits (the vote target, the size of `client`, the low-effort threshold) liv
 | **Motion judged without watching** | — | `vote_attention.played_both`, `voter_bias.played_both_share` (motion) | Motion votes count only when both reels were played |
 | **Fatigue** | Guide: sessions of 20–30 votes; calibration order shuffled per voter | `voter_effort`: early vs late median time, sessions; `client.index` per vote | A weight that falls with position in a long session; or drop votes past a measured point |
 | **Low effort** | Votes under 1 s are refused (`min_vote_seconds`) | `voter_effort.fast_votes` (under `fast_vote_seconds`), `voter_consistency` | Per-voter reliability weights from calibration |
-| **Ties and "can't decide" as an easy way out** | All four outcomes look the same | `voter_bias.tie_share`, `cant_decide_share` | Ties are half-wins; "can't decide" is left out of preference labels |
+| **Ties and "can't decide" as an easy way out** | All four outcomes look the same; both may say why (optional) | `voter_bias.tie_share`, `cant_decide_share`; their words and reasons in `votes` | Ties are half-wins; "can't decide" is left out of preference labels, but its words show which trade-off was hard |
 | **Priming by the listed dimensions** | Own words are always offered; suggestions come only from the voter's own past words | `voter_bias.own_words_share` | Themes are found from own words and reasons, not imposed |
 | **Being asked for a reason** | Asked at random, plus on split pairs, never explained | `served_pairs.reason_requested` against outcome and time | A covariate in the analysis: do asked votes differ? |
 | **Visual verdict colouring the motion verdict** | Run the rounds in separate sessions | `round_differences`, including `same_session` | Compare same-session and separate-session differences |

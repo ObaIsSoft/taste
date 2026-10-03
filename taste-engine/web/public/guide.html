@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#ffffff">
 <title>Voter guide · TASTE</title>
 <link rel="stylesheet" href="/app.css">
+<script src="/guide.js" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -17,44 +18,88 @@
 <main class="guide">
   <h1>Voter guide</h1>
   <p class="lede">Thank you for helping. Your votes teach a model what well-made web design looks like,
-    so it can help designers and steer AI tools away from generic results.</p>
+    so it can help designers and steer AI tools away from generic results. Please read this once
+    before your first session.</p>
 
-  <h2>How a session works</h2>
+  <h2>Before you start</h2>
+  <ul>
+    <li><strong>Your invite link signs you in.</strong> Keep it private: it is your key. If you were
+      given a code instead, type it on the first screen.</li>
+    <li><strong>A computer is best.</strong> It shows both sites at once. On a phone you see one at a
+      time: switch between them with the A and B tabs, and look at both before you vote.</li>
+    <li><strong>Short sessions.</strong> 20 to 30 votes at a time work best; stop when your attention
+      drops. Every vote is saved straight away, and a refresh shows the same pair again.</li>
+    <li><strong>There are no right answers.</strong> We want your judgment, not a guess at anyone
+      else's.</li>
+  </ul>
+
+  <h2>How the rounds work</h2>
+  <p>There are two rounds. Choose one on the first screen; you can switch at any time.</p>
+  <dl>
+    <div><dt>Visual round</dt><dd>The screens of two sites, A and B, from the top of each page down.
+      Scroll through each before you decide. It is about how the sites look.</dd></div>
+    <div><dt>Motion round</dt><dd>A short recording of each site, made the same way for every site:
+      the page loading and its intro, a slow scroll down and back, the pointer resting on a few links,
+      and the menu opened. Recordings are silent. Play both, and judge only the motion: how things
+      move, not how they look standing still.</dd></div>
+  </dl>
+  <p>Each round asks for <span data-fact="rounds.visual.target_votes">a set number of</span> votes in the
+    visual round and <span data-fact="rounds.motion.target_votes">a set number of</span> in the motion
+    round; the progress bar counts them, and you can keep going afterwards if you like. A motion vote
+    takes longer, because you watch two recordings.</p>
+
+  <h2>Calibration, and pairs that come back</h2>
+  <ul>
+    <li><strong>The first pairs are the same for everyone</strong>
+      (<span data-fact="rounds.visual.calibration_pairs">a set of</span> in the visual round,
+      <span data-fact="rounds.motion.calibration_pairs">a set of</span> in the motion round), in your own
+      order. Comparing everyone's answers on the same pairs shows how far designers agree, which is
+      the most important thing the pilot measures. The progress bar says "Calibration" until you have
+      done them.</li>
+    <li><strong>About <span data-fact="rounds.visual.repeats">a few</span> pairs come back later</strong>,
+      with the sides swapped. Answer them fresh, as if new: do not try to remember what you said.
+      Changing your mind is fine; it tells us how close the call was.</li>
+    <li>After that, pairs are drawn so that every site is compared about as often as every other.</li>
+  </ul>
+
+  <h2>Making a call</h2>
   <ol>
-    <li>Open your invite link. It signs you in, so keep it private. If you were given a code
-      instead, type it on the first screen.</li>
-    <li>Pick a round. The <strong>visual round</strong> shows the screens of two sites, A and B:
-      scroll through each. The <strong>motion round</strong> shows a short recording of each: play both.</li>
     <li>Choose <em>A is better</em>, <em>B is better</em>, <em>Equally good</em> or
       <em>Can't decide</em>.</li>
-    <li>If you chose A or B, say what decided it: tap one of the listed things, such as typography or
-      pacing, or write it in your own words, as a term of your own or a whole sentence. You can
-      always add a sentence about why; now and then it is required.
-      When asked, write one sentence about why. Not every vote asks.</li>
+    <li>Say what decided it: tap any of the listed things, or write it in your own words, as a term
+      of your own or a whole sentence. For A or B, at least one is needed; for <em>Equally good</em>
+      and <em>Can't decide</em> it is optional, and welcome.</li>
+    <li>Add a sentence about why if you like. Now and then the page asks for one; not every vote
+      does.</li>
+    <li>Submit. The next pair appears.</li>
   </ol>
-  <p>Sessions of 20 to 30 votes work best. Every vote is saved straight away, and a refresh shows the
-    same pair again. On a phone, switch between the sites with the A and B tabs.</p>
+  <dl>
+    <div><dt>Equally good</dt><dd>Both are well made and you have no preference.</dd></div>
+    <div><dt>Can't decide</dt><dd>You cannot judge this pair, for example two strengths you cannot
+      weigh against each other. It does not count as a tie.</dd></div>
+    <div><dt>Report</dt><dd>At the top of each site: use it when the capture is broken: blank, an error,
+      a cookie wall or pop-up covering it, or the wrong site. That capture is taken out for checking.</dd></div>
+    <div><dt>Open live site</dt><dd>Optional, for a closer look. Judge the screens or the recording
+      you were shown, not the live site, which may have changed.</dd></div>
+  </dl>
 
   <h2>Judge craft, not preference</h2>
   <ul>
     <li>Ignore the brand, the product, and whether you would use it.</li>
     <li>Ignore whether the style is in fashion. Judge how well it is done.</li>
+    <li>Ignore the language a site is written in.</li>
     <li>Tie-breaker: which one would you rather show a client?</li>
   </ul>
   <p>Great design is not the most of everything. Look for deliberate trade-offs that add up to one
     clear statement: a dense brutalist page and an airy minimal one can both be excellent.</p>
 
   <h2>What to look at</h2>
-  <dl>
-    <div><dt>Whitespace</dt><dd>Is the empty space doing work, or just empty?</dd></div>
-    <div><dt>Typography</dt><dd>Is the hierarchy clear? Are scale, weight and spacing deliberate?</dd></div>
-    <div><dt>Colour</dt><dd>Is the palette disciplined and does it support the content?</dd></div>
-    <div><dt>Grid and layout</dt><dd>Is the structure consistent, and are breaks from it purposeful?</dd></div>
-    <div><dt>Texture and imagery</dt><dd>Is the imagery art-directed, or generic stock?</dd></div>
-    <div><dt>Overall cohesion</dt><dd>Do the choices add up to one statement?</dd></div>
-    <div><dt>Motion round</dt><dd>Smoothness, pacing, how long the intro makes you wait, how scrolling
-      feels, hover and click feedback, and the motion overall.</dd></div>
-  </dl>
+  <p>The listed things, with what each means. Hover a button on the voting page to see the same
+    definition. If what decided it is not on the list, use your own words.</p>
+  <h3>Visual round</h3>
+  <dl data-dimensions="visual"><div><dt>Loading the list…</dt></div></dl>
+  <h3>Motion round</h3>
+  <dl data-dimensions="motion"><div><dt>Loading the list…</dt></div></dl>
 
   <h2>Writing a reason</h2>
   <p>Name a specific feature and what it does for the design. For example:</p>
@@ -63,13 +108,17 @@
   <p>Avoid feelings without evidence, such as "looks cleaner" or "better vibe". Only mention motion
     you actually saw.</p>
 
-  <h2>Equally good, can't decide, or broken</h2>
-  <ul>
-    <li><strong>Equally good</strong>: both are well made and you have no preference.</li>
-    <li><strong>Can't decide</strong>: you cannot judge this pair. It does not count as a tie.</li>
-    <li><strong>Report</strong>, at the top of a site: it is blank, shows an error, a cookie wall or
-      the wrong site. That capture is taken out for checking.</li>
-  </ul>
+  <h2>Words used here</h2>
+  <dl>
+    <div><dt>Pair</dt><dd>Two sites, A and B, shown together for one vote.</dd></div>
+    <div><dt>Round</dt><dd>Visual (screens) or motion (recordings).</dd></div>
+    <div><dt>Calibration</dt><dd>The first pairs, the same for every voter.</dd></div>
+    <div><dt>Repeat</dt><dd>A pair shown again later with the sides swapped.</dd></div>
+    <div><dt>Dimension</dt><dd>One of the listed things that can decide a vote, such as typography.</dd></div>
+    <div><dt>Your own words</dt><dd>A term or phrase of your own for what decided it, kept exactly as
+      you wrote it.</dd></div>
+    <div><dt>Reason</dt><dd>A sentence about why.</dd></div>
+  </dl>
 
   <h2>On a computer</h2>
   <p><kbd>1</kbd> A is better, <kbd>2</kbd> B is better, <kbd>E</kbd> equally good,
@@ -77,8 +126,11 @@
     <kbd>↵</kbd> submits and <kbd>Esc</kbd> goes back.</p>
 
   <h2>Your data</h2>
-  <p>We store your votes, the things you tapped, your reasons and timings with your voter name.
-    Names are never shown publicly.</p>
+  <p>With your voter name we store your votes, what you tapped and wrote, how long each vote took,
+    and how it was seen: the size of your screen, whether you used a phone, which site you opened
+    on a phone, whether you scrolled and played each site, and when you opened a live site. This is
+    how we tell taste apart from habits such as always favouring one side, and it is never shown to
+    other voters. Names are never shown publicly.</p>
 </main>
 </body>
 </html>

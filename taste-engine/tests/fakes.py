@@ -45,19 +45,34 @@ class _Call:
 class FakeSupabase:
     def __init__(self):
         self.calls = []
-        self.rpc_results = {}
+        self.rpc_results = {
+            "voting_facts": {
+                "min_reason_chars": 10,
+                "max_dimensions": 3,
+                "max_own_terms": 5,
+                "max_term_chars": 40,
+                "rounds": {
+                    "visual": {"target_votes": 200, "calibration_pairs": 91, "repeats": 10},
+                    "motion": {"target_votes": 100, "calibration_pairs": 28, "repeats": 10},
+                },
+            }
+        }
         self.tables = {
             "dimensions": [
-                {"id": "typography", "label": "Typography", "round": "visual", "position": 1},
-                {"id": "pacing", "label": "Pacing", "round": "motion", "position": 1},
-            ],
-            "voting_config": [
                 {
-                    "min_reason_chars": 10,
-                    "max_dimensions": 3,
-                    "max_own_terms": 5,
-                    "max_term_chars": 40,
-                }
+                    "id": "typography",
+                    "label": "Typography",
+                    "description": "Is the hierarchy clear?",
+                    "round": "visual",
+                    "position": 1,
+                },
+                {
+                    "id": "pacing",
+                    "label": "Pacing",
+                    "description": "Is the timing deliberate?",
+                    "round": "motion",
+                    "position": 1,
+                },
             ],
             "voters": [{"name": "Ada", "invite_code": "code-ada"}],
             "captures": [

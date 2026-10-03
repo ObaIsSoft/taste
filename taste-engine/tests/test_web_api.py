@@ -85,11 +85,13 @@ def test_vote_input_is_type_checked_before_the_database(api):
     assert not fake.calls
 
 
-def test_config_comes_from_the_database(api):
+def test_config_comes_from_the_database_and_needs_no_invite(api):
     client, fake = api
-    body = client.get("/api/config").get_json()
+    body = client.get("/api/config", headers={"X-Invite-Code": ""}).get_json()
     assert body["min_reason_chars"] == 10 and body["max_dimensions"] == 3
     assert [d["id"] for d in body["dimensions"]["motion"]] == ["pacing"]
+    assert body["dimensions"]["visual"][0]["description"] == "Is the hierarchy clear?"
+    assert body["rounds"]["motion"] == {"target_votes": 100, "calibration_pairs": 28, "repeats": 10}
 
 
 def test_a_vote_too_fast_to_be_real_is_429(api):

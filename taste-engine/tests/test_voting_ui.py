@@ -39,7 +39,13 @@ class VotingFake(FakeSupabase):
         self.tokens = itertools.count(1)
         self.reason_requested = True
         self.tables["dimensions"] = [
-            {"id": d, "label": d.title(), "round": "visual", "position": i}
+            {
+                "id": d,
+                "label": d.title(),
+                "description": f"About {d}.",
+                "round": "visual",
+                "position": i,
+            }
             for i, d in enumerate(VISUAL, 1)
         ]
         self.images = {
@@ -151,7 +157,9 @@ def test_sign_in_and_vote(site):
         expect(page.get_by_role("button", name="A is better")).to_be_visible()  # back to step one
         expect(page.get_by_label("Why?")).to_have_value("")  # the next pair starts clean
 
-        page.keyboard.press("s")
+        page.keyboard.press("s")  # can't decide also asks what made it hard, optionally
+        expect(page.get_by_text("What makes it hard to decide?")).to_be_visible()
+        page.keyboard.press("Enter")
         _wait_for_votes(page, fake, 2)
         assert fake.votes()[1]["p_outcome"] == "cant_decide"
         assert fake.votes()[1]["p_token"] == "t-2"
@@ -340,8 +348,44 @@ def test_how_each_vote_was_seen_is_recorded(site):
         assert {"view_right", "scroll_right"} <= set(fake.events())
 
         page.keyboard.press("s")
+        page.keyboard.press("Enter")
         _wait_for_votes(page, fake, 1)
         details = fake.votes()[0]["p_client"]
         assert details["layout"] == "tabs" and details["pointer"] in ("coarse", "fine")
         assert details["viewport_width"] == 390 and details["index"] == 1 and details["session"]
+        browser.close()
+
+
+def test_equally_good_can_say_why_and_chips_carry_their_definition(site):
+    url, fake = site
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        _open_round(page, url)
+
+        page.get_by_role("button", name="Equally good").click()
+        expect(page.get_by_text("What makes them equally good?")).to_be_visible()
+        chip = page.get_by_role("button", name="Typography")
+        expect(chip).to_have_attribute("title", "About typography.")
+        chip.click()
+        page.get_by_label("Why?").fill("Both carry the page on a single typeface.")
+        page.get_by_role("button", name="Submit vote").click()
+        _wait_for_votes(page, fake, 1)
+        vote = fake.votes()[0]
+        assert vote["p_outcome"] == "equally_good" and vote["p_dimensions"] == ["typography"]
+        assert vote["p_reason"] == "Both carry the page on a single typeface."
+        browser.close()
+
+
+def test_the_guide_shows_the_numbers_and_definitions_from_the_database(site):
+    url, _ = site
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{url}/guide.html")
+        expect(page.locator('[data-dimensions="visual"] dd').first).to_have_text(
+            "About whitespace."
+        )
+        expect(page.locator('[data-fact="rounds.motion.target_votes"]')).to_have_text("100")
+        expect(page.locator('[data-fact="rounds.visual.calibration_pairs"]')).to_have_text("91")
         browser.close()

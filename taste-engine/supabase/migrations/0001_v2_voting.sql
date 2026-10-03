@@ -34,9 +34,6 @@ create table voting_config (
   -- that fast, and it caps what a script holding a leaked invite code can do.
   min_vote_seconds numeric not null default 1,
   fast_vote_seconds numeric not null default 3,  -- faster votes count as low effort in reports
-  -- Votes a voter is asked for per round, calibration included; reaching it shows a thank-you,
-  -- and voting may go on.
-  target_votes integer not null default 200 check (target_votes >= 0),
   max_client_chars integer not null default 4000 check (max_client_chars > 0),  -- see votes.client
   resume_minutes integer not null default 60  -- an unanswered pair is served again within this
 );
@@ -67,26 +64,50 @@ create table captures (
 );
 create index captures_in_pool on captures (in_pool) where in_pool;
 
+-- The shared terms for what decided a vote. The description is the one definition: the voting
+-- page shows it on each chip and the voter guide lists it, both from /api/config.
 create table dimensions (
   id text primary key,
   label text not null,
+  description text not null,
   round round_kind not null,
   position integer not null,
   unique (round, position)
 );
-insert into dimensions (id, label, round, position) values
-  ('whitespace', 'Whitespace', 'visual', 1),
-  ('typography', 'Typography', 'visual', 2),
-  ('colour', 'Colour', 'visual', 3),
-  ('layout', 'Grid and layout', 'visual', 4),
-  ('imagery', 'Texture and imagery', 'visual', 5),
-  ('cohesion', 'Overall cohesion', 'visual', 6),
-  ('smoothness', 'Smoothness', 'motion', 1),
-  ('pacing', 'Pacing', 'motion', 2),
-  ('intro_wait', 'Intro wait', 'motion', 3),
-  ('scroll_feel', 'Scroll feel', 'motion', 4),
-  ('feedback', 'Hover and click feedback', 'motion', 5),
-  ('motion_cohesion', 'Overall motion', 'motion', 6);
+insert into dimensions (id, label, description, round, position) values
+  ('whitespace', 'Whitespace',
+   'Is the empty space doing work, or just empty? Margins, gaps and room to breathe.', 'visual', 1),
+  ('typography', 'Typography',
+   'Is the hierarchy clear? Are the typefaces, scale, weight and spacing deliberate?', 'visual', 2),
+  ('colour', 'Colour',
+   'Is the palette disciplined, and does it support the content?', 'visual', 3),
+  ('layout', 'Grid and layout',
+   'Is the structure consistent, and are breaks from it purposeful?', 'visual', 4),
+  ('imagery', 'Texture and imagery',
+   'Is the imagery art-directed or generic stock? Do texture and illustration add something?',
+   'visual', 5),
+  ('cohesion', 'Overall cohesion',
+   'Do all the choices add up to one clear statement?', 'visual', 6),
+  ('smoothness', 'Smoothness',
+   'Does everything move without stutter, jumps or lag?', 'motion', 1),
+  ('pacing', 'Pacing',
+   'Is the timing deliberate: not too fast to follow, not so slow it drags?', 'motion', 2),
+  ('intro_wait', 'Intro wait',
+   'How long the intro or loading makes you wait, and whether the wait is worth it.', 'motion', 3),
+  ('scroll_feel', 'Scroll feel',
+   'Does scrolling feel natural and in your control, or hijacked and heavy?', 'motion', 4),
+  ('feedback', 'Hover and click feedback',
+   'Do hovers and clicks respond clearly and quickly?', 'motion', 5),
+  ('motion_cohesion', 'Overall motion',
+   'Does the motion suit the design and add up to one statement?', 'motion', 6);
+
+-- Votes a voter is asked for in each round, calibration included. Reaching it shows a thank-you;
+-- voting may go on. A motion vote means watching two reels, so it asks for fewer.
+create table round_targets (
+  round round_kind primary key,
+  target_votes integer not null check (target_votes >= 0)
+);
+insert into round_targets (round, target_votes) values ('visual', 200), ('motion', 100);
 
 create table voters (
   id uuid primary key default gen_random_uuid(),
@@ -162,6 +183,7 @@ alter table voting_config enable row level security;
 alter table sites enable row level security;
 alter table captures enable row level security;
 alter table dimensions enable row level security;
+alter table round_targets enable row level security;
 alter table voters enable row level security;
 alter table calibration_pairs enable row level security;
 alter table served_pairs enable row level security;
@@ -642,6 +664,25 @@ begin
 end;
 $$;
 
+-- What the voting page and the voter guide need to know, in one place: the limits a vote must
+-- meet, and per round its target, its open calibration pairs and its planned repeats. Nothing
+-- in it is secret, so /api/config serves it without an invite code.
+create function voting_facts() returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'min_reason_chars', c.min_reason_chars,
+    'max_dimensions', c.max_dimensions,
+    'max_own_terms', c.max_own_terms,
+    'max_term_chars', c.max_term_chars,
+    'rounds', (
+      select jsonb_object_agg(r.kind, jsonb_build_object(
+        'target_votes', coalesce((select t.target_votes from round_targets t where t.round = r.kind), 0),
+        'calibration_pairs', (select count(*) from open_calibration_pairs p where p.round = r.kind),
+        'repeats', c.repeat_count))
+        from unnest(enum_range(null::round_kind)) as r (kind)))
+  from voting_config c
+$$;
+
 create function voter_progress(p_code text)
 returns table (
   round round_kind, calibration_done bigint, calibration_total bigint, votes bigint, target bigint
@@ -659,7 +700,7 @@ begin
                 and v.pair_low = cp.capture_a and v.pair_high = cp.capture_b)),
          (select count(*) from open_calibration_pairs cp where cp.round = r.kind),
          (select count(*) from votes v where v.voter_id = voter.id and v.round = r.kind),
-         (select c.target_votes::bigint from voting_config c)
+         (select t.target_votes::bigint from round_targets t where t.round = r.kind)
     from unnest(enum_range(null::round_kind)) as r (kind);
 end;
 $$;

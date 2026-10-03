@@ -418,8 +418,8 @@ kbd { display: none; }
 .outcomes button { min-height: 48px; padding: 0 10px; }
 .outcomes [data-pick="left"] { grid-area: a; }
 .outcomes [data-pick="right"] { grid-area: b; }
-.outcomes [data-outcome="equally_good"] { grid-area: eq; }
-.outcomes [data-outcome="cant_decide"] { grid-area: cd; }
+.outcomes [data-pick="equally_good"] { grid-area: eq; }
+.outcomes [data-pick="cant_decide"] { grid-area: cd; }
 
 .explain { display: grid; gap: 14px; }
 
@@ -461,6 +461,7 @@ kbd { display: none; }
 .guide > * + * { margin-top: 14px; }
 .guide h1 { margin-bottom: 8px; }
 .guide h2 { margin-top: 36px; font-size: 1.1875rem; font-weight: 650; letter-spacing: -0.01em; }
+.guide h3 { margin-top: 20px; font-size: 1rem; font-weight: 650; }
 .guide ol,
 .guide ul { padding-left: 1.25em; }
 .guide li + li { margin-top: 6px; }
@@ -502,7 +503,8 @@ kbd { display: none; }
     grid-template-columns: 1fr auto auto 1fr;
   }
 
-  .outcomes [data-outcome] { padding: 0 20px; }
+  .outcomes [data-pick="equally_good"],
+  .outcomes [data-pick="cant_decide"] { padding: 0 20px; }
 
   .explain { grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 24px; }
   .explain .chips,

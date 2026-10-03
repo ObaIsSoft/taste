@@ -7,8 +7,21 @@
 const STORE_KEY = 'taste.inviteCode';
 const SIDES = ['left', 'right'];
 const LETTER = { left: 'A', right: 'B' };
-const PICK_KEYS = { 1: 'left', 2: 'right' };
-const OUTCOME_KEYS = { e: 'equally_good', s: 'cant_decide' };
+const PICK_KEYS = { 1: 'left', 2: 'right', e: 'equally_good', s: 'cant_decide' };
+const DECISIVE = ['left', 'right'];
+// The question after each choice. Only A or B must say what decided it; the others may.
+const QUESTIONS = {
+  left: (max) => ['What made A better?', `Pick up to ${max}, or use your own words`],
+  right: (max) => ['What made B better?', `Pick up to ${max}, or use your own words`],
+  equally_good: () => ['What makes them equally good?', 'Optional'],
+  cant_decide: () => ['What makes it hard to decide?', 'Optional'],
+};
+const PLACEHOLDERS = {
+  left: 'A is better because …',
+  right: 'B is better because …',
+  equally_good: 'Both work because …',
+  cant_decide: 'It is hard to call because …',
+};
 
 const state = {
   code: null, name: null, config: null, round: null, pair: null, pick: null, chips: new Set(), terms: [],
@@ -144,6 +157,7 @@ function renderChips() {
     chip.type = 'button';
     chip.className = 'chip';
     chip.dataset.id = dimension.id;
+    chip.title = dimension.description;  // the definition, from the database
     chip.setAttribute('aria-pressed', 'false');
     const key = document.createElement('kbd');
     key.textContent = String(index + 1);
@@ -283,20 +297,19 @@ function resetDecision() {
   say('');
 }
 
-function pick(side) {
+function pick(outcome) {
   if (!state.pair || state.busy) return;
-  state.pick = side;
-  const letter = LETTER[side];
-  const legend = $('#chips-legend');
+  state.pick = outcome;
+  const [question, help] = QUESTIONS[outcome](state.config.max_dimensions);
   const hint = document.createElement('span');
   hint.className = 'hint';
-  hint.textContent = `Pick up to ${state.config.max_dimensions}, or use your own words`;
-  legend.replaceChildren(`What made ${letter} better?`, hint);
-  $('#reason').placeholder = `${letter} is better because …`;
-  $('#reason-hint').textContent = state.pair.reason_requested
+  hint.textContent = help;
+  $('#chips-legend').replaceChildren(question, hint);
+  $('#reason').placeholder = PLACEHOLDERS[outcome];
+  $('#reason-hint').textContent = state.pair.reason_requested && DECISIVE.includes(outcome)
     ? `(at least ${state.config.min_reason_chars} characters)`
     : '(optional)';
-  for (const s of SIDES) $(`#card-${s}`).classList.toggle('is-picked', s === side);
+  for (const s of SIDES) $(`#card-${s}`).classList.toggle('is-picked', s === outcome);
   $('#decide').hidden = true;
   $('#explain').hidden = false;
   say('');
@@ -326,9 +339,10 @@ async function loadPair() {
 
 async function submitVote(outcome) {
   if (!state.pair || state.busy) return;
-  const decisive = outcome === 'left' || outcome === 'right';
+  const decisive = DECISIVE.includes(outcome);
+  const words = outcome.startsWith('broken') ? [] : null;  // a report says nothing about taste
   const reason = $('#reason').value.trim();
-  if (decisive && !addTerm($('#own-term').value)) return;  // words typed but not yet added
+  if (!words && !addTerm($('#own-term').value)) return;  // words typed but not yet added
   $('#own-term').value = '';
   if (decisive && state.chips.size === 0 && state.terms.length === 0) {
     say('Say what decided it: pick one, or use your own words.');
@@ -344,9 +358,9 @@ async function submitVote(outcome) {
     const body = {
       token: state.pair.token,
       outcome,
-      dimensions: decisive ? [...state.chips] : [],
-      terms: decisive ? state.terms : [],
-      reason: decisive && reason ? reason : null,
+      dimensions: words || [...state.chips],
+      terms: words || state.terms,
+      reason: words || !reason ? null : reason,
       client: clientDetails(),
     };
     await api('/api/vote', { method: 'POST', body: JSON.stringify(body) });
@@ -412,9 +426,6 @@ function onKey(event) {
   if (PICK_KEYS[key]) {
     event.preventDefault();
     pick(PICK_KEYS[key]);
-  } else if (OUTCOME_KEYS[key]) {
-    event.preventDefault();
-    submitVote(OUTCOME_KEYS[key]);
   }
 }
 
@@ -465,7 +476,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitter = event.submitter;
     if (!submitter) return;
     if (submitter.id === 'submit-vote') submitVote(state.pick);
-    else if (submitter.dataset.outcome) submitVote(submitter.dataset.outcome);
   });
   document.addEventListener('keydown', onKey);
 

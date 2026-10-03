@@ -109,14 +109,19 @@ def index():
 
 @app.get("/api/config")
 def config():
-    _rpc("voter_progress", {"p_code": _code()})  # rejects unknown codes
+    """The dimensions with their definitions, the limits a vote must meet, and per round the
+    target, calibration pairs and repeats. Public: the voter guide shows it before sign-in."""
     dimensions = (
-        db().table("dimensions").select("id,label,round,position").order("position").execute().data
+        db()
+        .table("dimensions")
+        .select("id,label,description,round,position")
+        .order("position")
+        .execute()
+        .data
     )
-    limits = "min_reason_chars,max_dimensions,max_own_terms,max_term_chars"
-    [settings] = db().table("voting_config").select(limits).execute().data
+    facts = _rpc("voting_facts", {})
     return jsonify(
-        dimensions={r: [d for d in dimensions if d["round"] == r] for r in ROUNDS}, **settings
+        dimensions={r: [d for d in dimensions if d["round"] == r] for r in ROUNDS}, **facts
     )
 
 

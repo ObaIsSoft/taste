@@ -142,7 +142,7 @@ def test_calibration_then_swapped_repeats_then_adaptive(db):
     [[_, done, total, votes, target]] = db.run(
         "select * from voter_progress('code-ada') where round = 'visual'"
     )
-    assert (done, total, votes, target) == ("3", "3", "6", "200")  # the target is in voting_config
+    assert (done, total, votes, target) == ("3", "3", "6", "200")  # from round_targets
 
 
 def test_vote_rules_are_enforced_by_the_database(db):
@@ -411,3 +411,15 @@ def test_wins_by_language_come_from_the_descriptions(db):
         )
     )
     assert "it" in rows and "unknown" in rows
+
+
+def test_voting_facts_and_definitions_come_from_one_place(db):
+    import json
+
+    [[facts]] = db.run("select voting_facts()")
+    facts = json.loads(facts)
+    assert facts["max_dimensions"] == 3 and facts["min_reason_chars"] == 10
+    assert facts["rounds"]["motion"]["target_votes"] == 100
+    assert facts["rounds"]["visual"]["target_votes"] == 200
+    assert facts["rounds"]["visual"]["calibration_pairs"] >= 3
+    assert db.run("select count(*) from dimensions where description = ''") == [["0"]]
