@@ -64,7 +64,7 @@ def _capture(settings, site_id, variant=Variant.ORIGINAL, passed=True):
     store.write_record(record, directory)
 
 
-def test_publish_uploads_media_and_only_pools_clean_originals(tmp_path):
+def test_publish_puts_only_votable_originals_online(tmp_path):
     settings = Settings(data_dir=tmp_path, manifest_path=tmp_path / "sites.csv")
     entries = manifest.entries_from_urls(
         ["https://a.test/", "https://b.test/", "https://c.test/"], Cohort.AWARD, "t"
@@ -76,15 +76,14 @@ def test_publish_uploads_media_and_only_pools_clean_originals(tmp_path):
     _capture(settings, 3)
     fake = FakeDB(reported={"0003-original"})
 
-    assert db.publish(settings, fake) == 4
+    assert db.publish(settings, fake) == 2  # the twin and the QA failure stay local
     pooled = {row["id"]: row["in_pool"] for table, row in fake.upserts if table == "captures"}
     assert pooled == {
         "0001-original": True,
-        "0001-typography": False,  # twins are labelled without votes
-        "0002-original": False,  # failed QA
-        "0003-original": False,  # a voter reported it broken
+        "0003-original": False,  # a voter reported it broken: published, but not served
     }
     assert ("0001-original/reel.mp4", "video/mp4") in fake.uploads
+    assert not [path for path, _ in fake.uploads if path.startswith(("0001-typography", "0002"))]
 
 
 def test_fourteen_sites_make_ninety_one_calibration_pairs():

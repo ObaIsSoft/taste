@@ -32,9 +32,9 @@ class ReelSettings(BaseModel):
     hover_dwell_s: float = 0.8
     menu_dwell_s: float = 1.5
     return_speedup: float = 2.0  # scrolling back to the top runs this much faster
-    output_width: int = 1152  # height follows the viewport's aspect ratio
+    output_width: int = 960  # height follows the viewport; no voting pane shows it wider
     fps: int = 25  # Playwright records at 25 fps; any other rate duplicates or drops frames
-    crf: int = 28
+    crf: int = 30  # with the width, about 0.45 MB a reel: 1,000 sites fit Supabase's free 1 GB
     preset: str = "veryfast"
 
 
@@ -343,7 +343,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    capture_version: str = "2.1.0"  # 2.1: gates, stills, GPU, user agent, new QA flags
+    capture_version: str = "2.2.0"  # 2.2: smaller reels for the free tier
     analysis_version: str = "2.1.0"  # 2.1: every capture metric reaches the features
     data_dir: Path = PROJECT_ROOT / "data"
     manifest_path: Path = PROJECT_ROOT / "manifest" / "sites.csv"

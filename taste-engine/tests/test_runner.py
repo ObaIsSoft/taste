@@ -5,12 +5,16 @@ from types import SimpleNamespace
 
 from taste_engine.capture import runner, store
 from taste_engine.schemas import CaptureRecord, CaptureStatus, Cohort, SiteEntry, Variant
+from taste_engine.settings import Settings
 
 OK, FAILED = CaptureStatus.OK, CaptureStatus.FAILED
 ENTRIES = [SiteEntry(id=i, url=f"https://s{i}.test/", cohort=Cohort.AWARD) for i in (1, 2, 3)]
 
 
-def _record(job, status, version="2.1.0"):
+CURRENT = Settings().capture_version
+
+
+def _record(job, status, version=CURRENT):
     return CaptureRecord(
         capture_id=job.capture_id,
         site_id=job.entry.id,
@@ -28,7 +32,7 @@ def _record(job, status, version="2.1.0"):
 def test_plan_skips_finished_captures_of_this_version_only(fast_settings):
     jobs = runner.plan(ENTRIES, [Variant.ORIGINAL], fast_settings)
     for job, status, version in zip(
-        jobs, (OK, FAILED, OK), ("2.1.0", "2.1.0", "2.0.0"), strict=True
+        jobs, (OK, FAILED, OK), (CURRENT, CURRENT, "0.0.0"), strict=True
     ):
         store.write_record(_record(job, status, version), fast_settings.capture_dir(job.capture_id))
 

@@ -72,8 +72,19 @@ def capture_row(
     }
 
 
+def votable(record: CaptureRecord | None) -> bool:
+    """Only originals that passed QA go online: twins are labelled without votes and stay local,
+    and media nobody will see would only use up the free storage."""
+    return (
+        record is not None
+        and record.status == CaptureStatus.OK
+        and record.variant is Variant.ORIGINAL
+        and record.quality.passed
+    )
+
+
 def publish(settings: Settings, db: Client, capture_ids: list[str] | None = None) -> int:
-    """Upload media and upsert site and capture rows for successful captures. Returns the count."""
+    """Upload media and upsert site and capture rows for votable captures. Returns the count."""
     ensure_bucket(db, settings)
     entries = {entry.id: entry for entry in manifest.read_manifest(settings.manifest_path)}
     published = 0
@@ -81,7 +92,7 @@ def publish(settings: Settings, db: Client, capture_ids: list[str] | None = None
         if capture_ids is not None and directory.name not in capture_ids:
             continue
         record = store.read_record(directory)
-        if record is None or record.status != CaptureStatus.OK:
+        if not votable(record):
             continue
         entry = entries[record.site_id]
         db.table("sites").upsert(
@@ -155,10 +166,17 @@ def select_all(db: Client, table: str, order: tuple[str, ...]) -> list[dict[str,
             return rows
 
 
-def export_votes(db: Client, path: Path) -> int:
-    rows = select_all(db, "votes", ("id",))
+def _write_jsonl(rows: list[dict[str, Any]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     temporary.replace(path)
+
+
+def export_votes(db: Client, path: Path) -> int:
+    """Every vote, and next to it every vote event (which reels were played, which live sites
+    opened): motion reasons are only trusted when the reels were watched."""
+    rows = select_all(db, "votes", ("id",))
+    _write_jsonl(rows, path)
+    _write_jsonl(select_all(db, "vote_events", ("id",)), path.with_name("vote_events.jsonl"))
     return len(rows)
