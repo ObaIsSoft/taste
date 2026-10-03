@@ -18,7 +18,7 @@ log = logging.getLogger("taste")
 
 
 def parse_ids(spec: str) -> list[int]:
-    """Parse "1,4,10-12" into [1, 4, 10, 11, 12]."""
+    """Parse "1,4,10-12" into [1, 4, 10, 11, 12]. A ValueError becomes a clean usage error."""
     ids: list[int] = []
     for part in spec.split(","):
         part = part.strip()
@@ -30,6 +30,11 @@ def parse_ids(spec: str) -> list[int]:
         else:
             ids.append(int(part))
     return ids
+
+
+def parse_variants(spec: str) -> list[Variant]:
+    """Parse "original,typography"; an unknown name becomes a clean usage error."""
+    return [Variant(v.strip()) for v in spec.split(",") if v.strip()]
 
 
 def _cmd_manifest_import(args: argparse.Namespace) -> int:
@@ -63,14 +68,15 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     settings = get_settings()
     entries = manifest.select(
         manifest.read_manifest(settings.manifest_path),
-        ids=parse_ids(args.ids) if args.ids else None,
+        ids=args.ids,
         cohort=Cohort(args.cohort) if args.cohort else None,
         limit=args.limit,
     )
-    variants = [Variant(v) for v in args.variants.split(",")]
-    jobs = runner.plan(entries, variants, settings, force=args.force)
+    jobs = runner.plan(entries, args.variants, settings, force=args.force)
     log.info(
-        "%d captures to run, %d already done", len(jobs), len(entries) * len(variants) - len(jobs)
+        "%d captures to run, %d already done",
+        len(jobs),
+        len(entries) * len(args.variants) - len(jobs),
     )
     counts = runner.run(jobs, settings)
     log.info(
@@ -92,8 +98,7 @@ def _cmd_capture_one(args: argparse.Namespace) -> int:
 def _capture_ids(args: argparse.Namespace) -> list[str] | None:
     if not args.ids:
         return None
-    variants = [Variant(v) for v in args.variants.split(",")]
-    return [capture_id(i, v) for i in parse_ids(args.ids) for v in variants]
+    return [capture_id(i, v) for i in args.ids for v in args.variants]
 
 
 def _cmd_analyze(args: argparse.Namespace) -> int:
@@ -146,6 +151,20 @@ def _cmd_voters_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_voters_list(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    voters = db.list_voters(db.connect(settings))
+    for voter in voters:
+        code = voter["invite_code"]
+        key = db.invite_link(settings.voting_url, code) if settings.voting_url else code
+        print(f"{voter['name']}{'' if voter['active'] else ' (inactive)'}: {key}")
+    if not voters:
+        print("no voters yet: add one with taste voters add NAME")
+    elif not settings.voting_url:
+        print("set TASTE_VOTING_URL to print invite links instead of codes")
+    return 0
+
+
 def _cmd_votes_agreement(args: argparse.Namespace) -> int:
     for line in agreement.summary(agreement.fetch(db.connect(get_settings()))):
         print(line)
@@ -160,10 +179,11 @@ def _cmd_votes_export(args: argparse.Namespace) -> int:
 
 
 def _add_capture_selection(command: argparse.ArgumentParser) -> None:
-    command.add_argument("--ids", help='site ids, e.g. "1-14,20"')
+    command.add_argument("--ids", type=parse_ids, help='site ids, e.g. "1-14,20"')
     command.add_argument(
         "--variants",
-        default=Variant.ORIGINAL.value,
+        type=parse_variants,
+        default=[Variant.ORIGINAL],
         help="comma-separated: " + ",".join(v.value for v in Variant),
     )
     command.add_argument("--force", action="store_true", help="redo finished work")
@@ -225,6 +245,8 @@ def build_parser() -> argparse.ArgumentParser:
     add = voters_sub.add_parser("add", help="create a voter and print their invite code")
     add.add_argument("name")
     add.set_defaults(func=_cmd_voters_add)
+    listing = voters_sub.add_parser("list", help="every voter with their invite link or code")
+    listing.set_defaults(func=_cmd_voters_list)
 
     votes = commands.add_parser("votes", help="work with collected votes")
     votes_sub = votes.add_subparsers(dest="action", required=True)
@@ -250,4 +272,8 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (manifest.ManifestError, anthropic.AnthropicError) as exc:  # a message, not a traceback
+        log.error("%s", exc)
+        return 2

@@ -7,10 +7,12 @@ by another process. Batches cost half the standard price.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,16 @@ def _state(settings: Settings, job: str) -> Path:
     return settings.state_dir / f"{job}_batches.json"
 
 
+@contextmanager
+def _locked(settings: Settings, job: str) -> Iterator[None]:
+    """One process at a time may change a job's list of open batches."""
+    path = _state(settings, job).with_suffix(".lock")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
 def open_batches(settings: Settings, job: str) -> list[str]:
     path = _state(settings, job)
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
@@ -55,7 +67,8 @@ def submit(
         batch = client.messages.batches.create(requests=chunk)
         batch_ids.append(batch.id)
         log.info("%s: submitted batch %s with %d requests", job, batch.id, len(chunk))
-    store.write_json(_state(settings, job), open_batches(settings, job) + batch_ids)
+        with _locked(settings, job):
+            store.write_json(_state(settings, job), [*open_batches(settings, job), batch.id])
     return batch_ids
 
 
@@ -77,8 +90,9 @@ def collect(
             continue
         for result in client.messages.batches.results(batch_id):
             yield batch_id, result
-        remaining = [b for b in open_batches(settings, job) if b != batch_id]
-        store.write_json(_state(settings, job), remaining)
+        with _locked(settings, job):
+            remaining = [b for b in open_batches(settings, job) if b != batch_id]
+            store.write_json(_state(settings, job), remaining)
 
 
 def text_of(result: Any) -> tuple[str | None, str | None]:

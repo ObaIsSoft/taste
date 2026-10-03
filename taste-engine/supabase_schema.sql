@@ -1,3 +1,6 @@
+-- DEPRECATED: the v1 schema. Do not run it: it opens every table to anonymous reads and
+-- writes. v2 uses supabase/migrations/0001_v2_voting.sql. Kept only until the v1 cleanup.
+
 -- Run this in your Supabase SQL Editor to create the tables for the Taste Engine.
 
 -- 1. Create the ratings table

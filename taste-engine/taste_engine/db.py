@@ -111,6 +111,17 @@ def add_voter(db: Client, name: str) -> str:
     return code
 
 
+def list_voters(db: Client) -> list[dict[str, Any]]:
+    """Every voter, oldest first, with their invite code: for re-sending a lost link."""
+    return (
+        db.table("voters")
+        .select("name,invite_code,active,created_at")
+        .order("created_at")
+        .execute()
+        .data
+    )
+
+
 def invite_link(voting_url: str, code: str) -> str:
     """A link that signs the voter in. The code is in the fragment, so no server ever logs it."""
     return f"{voting_url.rstrip('/')}/#invite={quote(code, safe='')}"
