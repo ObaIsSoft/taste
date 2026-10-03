@@ -438,10 +438,16 @@ function inviteFromLink() {
   try { return decodeURIComponent(match[1]).trim() || null; } catch (error) { return null; }
 }
 
+// Voters paste the whole invite link as often as the code: take the code from either.
+function inviteCode(text) {
+  const match = text.match(/[#?&]invite=([^&\s]+)/);
+  try { return (match ? decodeURIComponent(match[1]) : text).trim() || null; } catch (error) { return null; }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   $('#sign-in-form').addEventListener('submit', (event) => {
     event.preventDefault();
-    const code = $('#invite').value.trim();
+    const code = inviteCode($('#invite').value);
     if (code) signIn(code);
   });
   $('#sign-out').addEventListener('click', signOut);

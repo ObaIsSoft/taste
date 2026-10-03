@@ -284,6 +284,18 @@ def test_phones_stack_recordings_but_tab_between_screens(site, round_name, both_
         browser.close()
 
 
+def test_a_pasted_invite_link_works_as_the_code(site):
+    url, _fake = site
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(url)
+        page.get_by_label("Invite code").fill(" https://votes.test/#invite=code-ada ")
+        page.get_by_role("button", name="Start").click()
+        expect(page.get_by_role("heading", name="Hi Ada. Choose a round.")).to_be_visible()
+        browser.close()
+
+
 def test_designers_can_say_it_in_their_own_words(site):
     url, fake = site
     fake.rpc_results["voter_terms"] = [{"term": "editorial pacing", "uses": 3}]
