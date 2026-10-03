@@ -134,19 +134,22 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
     if not args.ids and not args.pick:
         log.error("pass --ids with the calibration sites, or --pick N to choose the most varied")
         return 1
-    client = None if args.dry_run else db.connect(settings)
+    client = db.connect(settings)  # read even on a dry run: picks come from the live pool
     for round_kind in list(Round) if args.round == "both" else [Round(args.round)]:
         ids = _capture_ids(args)
         if args.pick:
-            pool = calibration.candidates(settings, round_kind)
-            if ids:
-                pool = {cid: vector for cid, vector in pool.items() if cid in ids}
+            live = db.pool_ids(client)  # published, and not excluded since
+            pool = {
+                cid: vector
+                for cid, vector in calibration.candidates(settings, round_kind).items()
+                if cid in live and (not ids or cid in ids)
+            }
             if len(pool) < args.pick:
                 log.error("only %d %s candidates for %d sites", len(pool), round_kind, args.pick)
                 return 1
             ids = calibration.pick(pool, args.pick)
             print(f"{round_kind.value}: {','.join(ids)}")
-        if client is not None:
+        if not args.dry_run:
             count = db.create_calibration(client, round_kind.value, ids)
             log.info("%s calibration set: %d pairs from %d captures", round_kind, count, len(ids))
     return 0

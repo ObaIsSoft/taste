@@ -140,6 +140,24 @@ def exclude_capture(db: Client, capture_id: str, reason: str) -> bool:
     return bool(rows)
 
 
+def pool_ids(db: Client) -> set[str]:
+    """Captures voters may be served: published, and never taken out of the pool."""
+    ids: list[str] = []
+    while True:
+        page = (
+            db.table("captures")
+            .select("id")
+            .eq("in_pool", True)
+            .order("id")
+            .range(len(ids), len(ids) + PAGE_ROWS - 1)
+            .execute()
+            .data
+        )
+        ids.extend(row["id"] for row in page)
+        if len(page) < PAGE_ROWS:
+            return set(ids)
+
+
 def disable_voter(db: Client, name: str) -> int:
     """Switch a voter off: their invite code stops working, their votes stay. Returns how many."""
     return len(db.table("voters").update({"active": False}).eq("name", name).execute().data)

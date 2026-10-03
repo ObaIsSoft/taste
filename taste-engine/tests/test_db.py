@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from fakes import FakeSupabase
+
 from taste_engine import db, manifest
 from taste_engine.capture import store
 from taste_engine.schemas import CaptureRecord, CaptureStatus, Cohort, QualityFlags, Still, Variant
@@ -70,7 +72,11 @@ def _capture(settings, site_id, variant=Variant.ORIGINAL, passed=True, descripti
 
 
 def test_publish_puts_only_votable_originals_online(tmp_path):
-    settings = Settings(data_dir=tmp_path, manifest_path=tmp_path / "sites.csv")
+    settings = Settings(
+        data_dir=tmp_path,
+        manifest_path=tmp_path / "sites.csv",
+        publish_requires_description=True,  # whatever the local .env says
+    )
     entries = manifest.entries_from_urls([f"https://{c}.test/" for c in "abcde"], Cohort.AWARD, "t")
     manifest.write_manifest(entries, settings.manifest_path)
     _capture(settings, 1)
@@ -100,6 +106,15 @@ def test_fourteen_sites_make_ninety_one_calibration_pairs():
     rows = db.calibration_rows(ids + ids[:2], "visual")
     assert len(rows) == 91
     assert all(row["capture_a"] < row["capture_b"] for row in rows)
+
+
+def test_the_live_pool_leaves_out_unpublished_and_excluded_captures():
+    client = FakeSupabase()
+    client.tables["captures"] = [
+        {"id": "0001-original", "in_pool": True},
+        {"id": "0002-original", "in_pool": False},  # excluded after publishing
+    ]
+    assert db.pool_ids(client) == {"0001-original"}
 
 
 class _Voters:

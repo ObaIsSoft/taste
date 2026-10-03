@@ -30,6 +30,10 @@ class _Query:
         self._rows = [row for row in self._rows if row.get(column) in values]
         return self
 
+    def range(self, start, end):
+        self._rows = self._rows[start : end + 1]
+        return self
+
     def execute(self):
         return _Result(self._rows)
 
