@@ -9,12 +9,19 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+import time
+from collections.abc import Callable
+from functools import partial
 from itertools import combinations
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from supabase import Client, create_client
+import httpx
+from postgrest.exceptions import APIError
+from storage3.exceptions import StorageApiError
+
+from supabase import Client, ClientOptions, create_client
 from taste_engine import manifest
 from taste_engine.analysis.features import FEATURES_FILE
 from taste_engine.capture import store
@@ -31,7 +38,40 @@ PAGE_ROWS = 1000  # the REST API's default row limit per request
 def connect(settings: Settings) -> Client:
     if not settings.supabase_url or settings.supabase_service_key is None:
         raise RuntimeError("set SUPABASE_URL and SUPABASE_SERVICE_KEY in taste-engine/.env")
-    return create_client(settings.supabase_url, settings.supabase_service_key.get_secret_value())
+    return create_client(
+        settings.supabase_url,
+        settings.supabase_service_key.get_secret_value(),
+        options=ClientOptions(
+            postgrest_client_timeout=settings.request_timeout_s,
+            storage_client_timeout=settings.request_timeout_s,
+        ),
+    )
+
+
+def _transient(error: Exception) -> bool:
+    """A failure of the network or the server, not of the request: worth trying again."""
+    if isinstance(error, httpx.TransportError):
+        return True  # a dropped, refused or stalled connection
+    if isinstance(error, json.JSONDecodeError):
+        return True  # the storage client reading an edge error page (a 5xx) that is not JSON
+    if isinstance(error, StorageApiError):
+        return str(error.status).startswith("5")
+    if isinstance(error, APIError):
+        return str(error.code).startswith("5") and len(str(error.code)) == 3  # HTTP, not SQL
+    return False
+
+
+def _retry[T](settings: Settings, what: str, call: Callable[[], T]) -> T:
+    """Run an idempotent request, retrying transient failures and waiting longer each time."""
+    for attempt in range(1, settings.request_attempts + 1):
+        try:
+            return call()
+        except Exception as error:
+            if attempt == settings.request_attempts or not _transient(error):
+                raise
+            log.warning("%s failed (%s: %s); retrying", what, type(error).__name__, error)
+            time.sleep(2**attempt)
+    raise AssertionError("unreachable")
 
 
 def ensure_bucket(db: Client, settings: Settings) -> None:
@@ -41,11 +81,14 @@ def ensure_bucket(db: Client, settings: Settings) -> None:
 
 def _upload(db: Client, settings: Settings, directory: Path, name: str) -> str:
     path = f"{directory.name}/{name}"
-    db.storage.from_(settings.storage_bucket).upload(
+    data = (directory / name).read_bytes()
+    upload = partial(
+        db.storage.from_(settings.storage_bucket).upload,
         path,
-        (directory / name).read_bytes(),
+        data,
         {"content-type": CONTENT_TYPES[Path(name).suffix], "upsert": "true"},
     )
+    _retry(settings, f"upload of {path}", upload)
     return path
 
 
@@ -100,21 +143,23 @@ def publish(settings: Settings, db: Client, capture_ids: list[str] | None = None
         if not votable(record, described.get("description"), settings):
             continue
         entry = entries[record.site_id]
-        db.table("sites").upsert(
-            {
-                "id": entry.id,
-                "url": str(entry.url),
-                "cohort": entry.cohort.value,
-                "category": entry.category,
-            }
-        ).execute()
+        site = {
+            "id": entry.id,
+            "url": str(entry.url),
+            "cohort": entry.cohort.value,
+            "category": entry.category,
+        }
+        _retry(settings, f"site {entry.id}", db.table("sites").upsert(site).execute)
         stills = [_upload(db, settings, directory, still.file) for still in record.stills]
         reel = _upload(db, settings, directory, record.reel_file) if record.reel_file else None
-        existing = db.table("captures").select("qa_note").eq("id", record.capture_id).execute()
+        existing = _retry(
+            settings,
+            f"note of {record.capture_id}",
+            db.table("captures").select("qa_note").eq("id", record.capture_id).execute,
+        )
         reported = bool(existing.data and existing.data[0]["qa_note"])
-        db.table("captures").upsert(
-            capture_row(record, directory, stills, reel, reported)
-        ).execute()
+        row = capture_row(record, directory, stills, reel, reported)
+        _retry(settings, record.capture_id, db.table("captures").upsert(row).execute)
         published += 1
         log.info("published %s", record.capture_id)
     return published

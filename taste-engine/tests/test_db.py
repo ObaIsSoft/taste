@@ -117,6 +117,48 @@ def test_the_live_pool_leaves_out_unpublished_and_excluded_captures():
     assert db.pool_ids(client) == {"0001-original"}
 
 
+def test_transient_failures_are_retried_and_real_errors_are_not(monkeypatch):
+    import httpx
+    from postgrest.exceptions import APIError
+    from storage3.exceptions import StorageApiError
+
+    monkeypatch.setattr(db.time, "sleep", lambda _s: None)
+    settings = Settings(request_attempts=3)
+    failures = [httpx.RemoteProtocolError("Server disconnected"), StorageApiError("x", "y", 520)]
+
+    def flaky():
+        if failures:
+            raise failures.pop(0)
+        return "done"
+
+    assert db._retry(settings, "upload", flaky) == "done"
+
+    calls = []
+
+    def bad_request():
+        calls.append(1)
+        raise APIError({"message": "bad", "code": "23505"})  # a SQL error: retrying cannot help
+
+    try:
+        db._retry(settings, "row", bad_request)
+    except APIError:
+        assert calls == [1]
+    else:
+        raise AssertionError("expected the error")
+
+    def always_down():
+        calls.append(1)
+        raise httpx.ReadTimeout("stalled")
+
+    calls.clear()
+    try:
+        db._retry(settings, "upload", always_down)
+    except httpx.ReadTimeout:
+        assert len(calls) == 3  # gives up after request_attempts
+    else:
+        raise AssertionError("expected the error")
+
+
 class _Voters:
     def __init__(self):
         self.rows = []

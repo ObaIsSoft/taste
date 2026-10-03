@@ -399,6 +399,8 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("SUPABASE_SERVICE_KEY", "SUPABASE_KEY")
     )
     storage_bucket: str = "captures"  # private: the voting API hands out signed URLs
+    request_timeout_s: int = 30  # one Supabase request; a stalled connection fails, then retries
+    request_attempts: int = 4  # tries per request when the network or the server fails
     # Claude's check that nothing covers the page and it is a live site (taste describe)
     publish_requires_description: bool = True
     voting_url: str | None = None  # the deployed voting site, for invite links
