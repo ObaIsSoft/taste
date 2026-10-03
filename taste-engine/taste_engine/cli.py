@@ -148,7 +148,8 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
                 log.error("only %d %s candidates for %d sites", len(pool), round_kind, args.pick)
                 return 1
             ids = calibration.pick(pool, args.pick)
-            print(f"{round_kind.value}: {','.join(ids)}")
+            sites = ",".join(str(int(cid.split("-", 1)[0])) for cid in ids)
+            print(f"{round_kind.value}: {','.join(ids)}\n  as --ids: {sites}")
         if not args.dry_run:
             count = db.create_calibration(client, round_kind.value, ids)
             log.info("%s calibration set: %d pairs from %d captures", round_kind, count, len(ids))

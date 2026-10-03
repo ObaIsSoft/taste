@@ -21,6 +21,7 @@ that removes data is recorded under [Database history](#database-history).
 | `taste-engine/.env` | `SUPABASE_DB_URL` | Postgres connection string; only needed to apply migrations |
 | `taste-engine/.env` | `TASTE_VOTING_URL` | `https://taste-opal.vercel.app`, so `taste voters add/list` print invite links |
 | `taste-engine/.env` | `ANTHROPIC_API_KEY` | Claude descriptions and, later, the baseline judge |
+| `taste-engine/.env` | `TASTE_PUBLISH_REQUIRES_DESCRIPTION` | `false` while the API account has no credit: publishing then skips Claude's check (see [Publishing without Claude's check](#publishing-without-claudes-check)) |
 | Vercel (Production) | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | The API's database access. The service key never reaches a browser |
 | Vercel (Production) | `TASTE_STORAGE_BUCKET` | `captures` |
 | Vercel (Production) | `TASTE_SIGNED_URL_SECONDS` | Optional; how long media links last (default 3600) |
@@ -74,17 +75,36 @@ v1's site breaks the moment its tables are dropped, so these run back to back.
    - `taste analyze --ids "$(cat manifest/pilot-ids.txt)"`
    - `taste describe --ids "$(cat manifest/pilot-ids.txt)"`. This is Claude's check: it looks at
      every still and reports anything covering the page, and whether the page is a live site.
+     Without API credit, see [Publishing without Claude's check](#publishing-without-claudes-check).
    - `taste publish --ids "$(cat manifest/pilot-ids.txt)"`. It only publishes captures that passed
      QA and that Claude saw as clean, and it creates the private bucket on first run.
 4. **Set calibration.** The sites are picked automatically as the most varied voteable ones:
    - `taste calibrate --round visual --pick 14`
-   - `taste calibrate --round motion --pick 8`
+   - `taste calibrate --round motion --pick 8 --ids <the visual picks>`, so the motion sites are
+     a subset of the visual ones. `--pick` prints its choice in `--ids` form for this.
    - Add `--dry-run` to see the picks first. Record the chosen ids in the database history.
 5. **Configure Vercel.** Set the Production variables listed above, then from `taste-engine/web` run
    `vercel --prod`.
 6. **Smoke test** (below).
 7. **Add the designers.** `taste voters add "Name"` for each, and send each their invite link
    privately.
+
+### Publishing without Claude's check
+
+Claude's check needs API credit. Without it, set `TASTE_PUBLISH_REQUIRES_DESCRIPTION=false` in
+`.env`: every capture that passed QA is published, and a person does the check instead.
+
+1. Make contact sheets of every votable capture's stills and look at each one, applying Claude's
+   rule: nothing covering the page that a visitor would have to dismiss, and a live site (not
+   under construction, closed or for sale).
+2. Publish, then take each failing capture out with
+   `taste captures exclude <id> --reason "..."`. Do this before picking calibration sites;
+   `--pick` only chooses from captures still in the pool.
+3. Record the excluded ids and reasons in the database history.
+
+To turn the check back on, add credit, remove the line from `.env`, run `taste describe` on the
+published ids, and publish again. Captures Claude sees as covered then stay local on later
+publishes, but a capture already in the pool stays there until it is excluded.
 
 ### Smoke test, and removing its data
 
