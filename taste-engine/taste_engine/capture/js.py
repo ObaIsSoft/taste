@@ -323,25 +323,58 @@ CONSENT_VISIBLE = r"""([scopes, minRatio]) => {
   return [...hits];
 }"""
 
-LOOKS_GATED = r"""(ratio) => {
-  const vw = innerWidth, vh = innerHeight, doc = document.documentElement;
-  const height = Math.max(doc.scrollHeight, document.body ? document.body.scrollHeight : 0);
-  const locked = ['hidden', 'clip'].includes(getComputedStyle(doc).overflowY)
-    || (document.body && ['hidden', 'clip'].includes(getComputedStyle(document.body).overflowY));
-  if (height <= vh * 1.2 || locked) return true;
-  for (const el of document.querySelectorAll('body *')) {
-    const cs = getComputedStyle(el);
-    if (cs.position !== 'fixed' && cs.position !== 'absolute') continue;
-    if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
-    if (!(parseInt(cs.zIndex, 10) >= 10)) continue;
+BLOCKING_OVERLAY = r"""([coverRatio, maxControls, maxChars]) => {
+  for (const old of document.querySelectorAll('[data-taste-gate]')) old.removeAttribute('data-taste-gate');
+  const vw = innerWidth, vh = innerHeight, grid = 5, hits = new Map();
+  const covers = (el) => {
     const r = el.getBoundingClientRect();
-    const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
-    const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
-    if (w * h >= ratio * vw * vh) return true;
+    return r.width >= vw * 0.9 && r.height >= vh * 0.9;
+  };
+  for (let i = 1; i <= grid; i++) {
+    for (let j = 1; j <= grid; j++) {
+      let n = document.elementFromPoint((vw * i) / (grid + 1), (vh * j) / (grid + 1));
+      for (; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+        const position = getComputedStyle(n).position;
+        if ((position === 'fixed' || position === 'absolute') && covers(n)) break;
+      }
+      if (n && n !== document.body && n !== document.documentElement) hits.set(n, (hits.get(n) || 0) + 1);
+    }
   }
-  return false;
+  let layer = null, best = 0;
+  for (const [el, count] of hits) if (count > best) { layer = el; best = count; }
+  if (!layer || best < coverRatio * grid * grid) return null;
+  const shown = (el) => {
+    const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
+  };
+  const controls = [...layer.querySelectorAll(
+    'a, button, [role="button"], input[type="submit"], input[type="button"]')].filter(shown);
+  const text = (layer.innerText || '').replace(/\s+/g, ' ').trim();
+  if (!controls.length || controls.length > maxControls || text.length > maxChars) return null;
+  layer.setAttribute('data-taste-gate', '');
+  return { text: text.slice(0, 300) };
 }"""
-
+SCROLL_INNER = r"""(distance) => {
+  let best = null, area = 0;
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.scrollHeight - el.clientHeight < 100) continue;
+    if (!['auto', 'scroll', 'overlay'].includes(getComputedStyle(el).overflowY)) continue;
+    const r = el.getBoundingClientRect();
+    const w = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
+    const h = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+    if (w * h > area) { best = el; area = w * h; }
+  }
+  if (!best || area < 0.5 * innerWidth * innerHeight) return null;
+  const before = best.scrollTop;
+  best.scrollTop = before + distance;
+  return { moved: best.scrollTop - before, top: best.scrollTop };
+}"""
+IDLE_MOTION = r"""(ms) => new Promise((resolve) => {
+  const t = window.__taste;
+  if (!t) return resolve(null);
+  const start = t.styleMutations;
+  setTimeout(() => resolve(t.styleMutations - start), ms);
+})"""
 HOVER_TARGETS = r"""(n) => {
   const vw = innerWidth, vh = innerHeight, out = [], seen = new Set();
   for (const el of document.querySelectorAll('header a, header button, nav a, nav button, a, button')) {
@@ -359,10 +392,15 @@ HOVER_TARGETS = r"""(n) => {
 
 MENU_BUTTON = r"""() => {
   const vw = innerWidth, vh = innerHeight;
-  const selector = 'button[aria-label*="menu" i], [aria-expanded][aria-label*="navigation" i], '
-    + 'button[aria-expanded="false"], [class*="hamburger" i], [class*="burger" i], '
-    + '[class*="menu-toggle" i], [class*="menu-button" i]';
-  for (const el of document.querySelectorAll(selector)) {
+  const NAMES = ['menu', 'open menu', 'menú', 'menü', 'menu ouvrir', '☰', '≡'];
+  const named = (el) => NAMES.includes((el.innerText || '').trim().toLowerCase());
+  const specific = 'button[aria-label*="menu" i], [role="button"][aria-label*="menu" i], '
+    + 'a[aria-label*="menu" i], button[aria-controls*="menu" i], button[aria-controls*="nav" i], '
+    + '[class*="hamburger" i], [class*="burger" i], [class*="menu-toggle" i], '
+    + '[class*="menu-button" i], [class*="nav-toggle" i]';
+  const candidates = [...document.querySelectorAll(specific),
+    ...[...document.querySelectorAll('button, [role="button"]')].filter(named)];
+  for (const el of candidates) {
     const r = el.getBoundingClientRect();
     if (r.width < 8 || r.height < 8 || r.top < 0 || r.left < 0 || r.bottom > vh || r.right > vw) continue;
     const cs = getComputedStyle(el);

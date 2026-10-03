@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Cantina</title>
+<style>
+  body { margin: 0; font-family: Georgia, serif; overflow: hidden; }
+  body.open { overflow: auto; }
+  section { height: 900px; display: grid; place-items: center; font-size: 64px; }
+  section:nth-child(1) { background: #3b0a0a; color: #fff; }
+  section:nth-child(2) { background: #f4e9d8; }
+  section:nth-child(3) { background: #7a1f1f; color: #fff; }
+  section:nth-child(4) { background: #e8dcc8; }
+  #gate { position: fixed; inset: 0; z-index: 100; background: #050505; color: #fff;
+          display: grid; place-content: center; gap: 24px; text-align: center; }
+  #gate button { font-size: 18px; padding: 8px 24px; margin: 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <section>Vini rossi</section><section>La cantina</section><section>Visite</section><section>Contatti</section>
+</main>
+<div id="gate">
+  <p>Rientri nell'età minima per consumare alcolici?</p>
+  <div><button id="no">NO</button><button id="yes">SI</button></div>
+</div>
+<script>
+  document.getElementById('yes').addEventListener('click', () => {
+    document.getElementById('gate').remove();
+    document.body.classList.add('open');
+  });
+  document.getElementById('no').addEventListener('click', () => { location.href = '/no.html'; });
+</script>
+</body>
+</html>

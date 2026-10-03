@@ -34,7 +34,7 @@ button, [role="button"], input[type="submit"] {
 """
 
 _SPACING_JS = """
-const done = window.__tasteHalved || (window.__tasteHalved = new WeakSet());
+const done = window.__tasteCramped || (window.__tasteCramped = new WeakSet());
 for (const el of document.querySelectorAll('body *')) {
   if (done.has(el)) continue;
   done.add(el);
@@ -42,7 +42,7 @@ for (const el of document.querySelectorAll('body *')) {
   for (const prop of ['padding-top', 'padding-bottom', 'padding-left', 'padding-right',
                       'margin-top', 'margin-bottom', 'row-gap', 'column-gap']) {
     const value = parseFloat(cs.getPropertyValue(prop));
-    if (value > 0) el.style.setProperty(prop, (value / 2) + 'px', 'important');
+    if (value > 0) el.style.setProperty(prop, (value / 4) + 'px', 'important');
   }
 }
 """
@@ -79,6 +79,8 @@ _TEMPLATE = r"""
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
   else apply();
   window.addEventListener('load', apply);
+  let runs = 0;  // content that arrives late is degraded too
+  const timer = setInterval(() => { apply(); if (++runs >= 20) clearInterval(timer); }, 500);
 })();
 """
 

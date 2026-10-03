@@ -20,10 +20,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 class ReelSettings(BaseModel):
     """The scripted UX reel: the same choreography for every site."""
 
-    enabled: bool = True
-    intro_s: float = 4.0  # load and intro, untouched
+    enabled: bool = True  # originals only: twins need stills, not motion
+    intro_s: float = 2.0  # the load and intro play untouched for at least this long
+    intro_max_s: float = 12.0  # ...and until the page settles, up to this long
+    max_s: float = 45.0  # a page too slow to finish the choreography in this long gets cut short
     scroll_px_per_s: float = 400.0  # slow enough for a designer to read
-    scroll_step_px: int = 40
     pause_per_screen_s: float = 1.0
     screens: int = 3
     hover_targets: int = 3
@@ -32,7 +33,7 @@ class ReelSettings(BaseModel):
     menu_dwell_s: float = 1.5
     return_speedup: float = 2.0  # scrolling back to the top runs this much faster
     output_width: int = 1152  # height follows the viewport's aspect ratio
-    fps: int = 30
+    fps: int = 25  # Playwright records at 25 fps; any other rate duplicates or drops frames
     crf: int = 28
     preset: str = "veryfast"
 
@@ -44,8 +45,15 @@ class CaptureSettings(BaseModel):
     locale: str = "en-US"
     timezone: str = "UTC"
     headless: bool = True
+    # "chromium" is Chromium's full headless mode, which renders WebGL on the GPU; the default
+    # headless shell renders it in software, which makes WebGL sites stutter in reels and metrics.
+    browser_channel: str | None = "chromium"
     browser_executable: Path | None = None
-    browser_args: list[str] = Field(default_factory=list)
+    # Without this, navigator.webdriver is true, and bot walls such as Cloudflare refuse the page.
+    browser_args: list[str] = Field(
+        default_factory=lambda: ["--disable-blink-features=AutomationControlled"]
+    )
+    user_agent: str | None = None  # None: the browser's own, without "Headless" in it
 
     navigation_timeout_s: float = 60.0
     network_idle_timeout_s: float = 15.0
@@ -53,20 +61,28 @@ class CaptureSettings(BaseModel):
     settle_max_s: float = 10.0
     settle_poll_s: float = 0.25
     screen_settle_s: float = 1.2
-    stable_diff: float = 1.5  # mean grey-level change between polls that counts as still
-    blank_std: float = 6.0  # grey-level spread below which a frame counts as blank
+    action_timeout_s: float = 30.0  # screenshots and other page operations on heavy pages
+    wheel_wait_s: float = 2.5  # how long a wheel-driven page gets to show its next screen
+    wheel_attempts: int = 2  # slideshows often ignore a second gesture while they animate
+    inner_scroll_min_px: int = 200  # an inner element scrolling this far counts as the page
+    stable_diff: float = 1.5  # mean colour change (0-255) between polls that counts as still
+    blank_std: float = 6.0  # colour spread below which a frame counts as blank
     jank_test_s: float = 2.5
     jank_wheel_px: int = 60
     jank_step_ms: int = 50
     frame_budget_ms: float = 1000 / 60
     dropped_frame_factor: float = 1.5  # a frame this many budgets long counts as dropped
     native_scroll_share: float = 0.2  # below this share of wheel distance, scroll is not native
-    reduced_motion_check: bool = True
+    reduced_motion_check: bool = True  # originals only
+    idle_motion_s: float = 2.0  # JavaScript motion is counted over this long with no input
+    idle_motion_min: int = 10  # fewer style changes than this in that window is no motion
     text_sample_chars: int = 4000
 
     overlay_rounds: int = 3
     click_timeout_s: float = 2.5
-    gate_cover_ratio: float = 0.6  # an overlay this large means the page is gated
+    gate_cover_ratio: float = 0.6  # a fixed layer on top of this share of the screen blocks it
+    gate_max_controls: int = 8  # a gate offers a few choices; more means it is the site itself
+    gate_max_chars: int = 800  # ...and says little
     overlay_cover_ratio: float = 0.1  # consent UI this large left on screen fails QA
     accept_texts: list[str] = Field(
         default_factory=lambda: [
@@ -93,21 +109,37 @@ class CaptureSettings(BaseModel):
             "tout accepter",
             "j'accepte",
             "accepter et fermer",
+            "accepter tout",
+            "tout accepter et fermer",
             "aceptar",
             "aceptar todo",
             "aceptar todas",
+            "aceptar y cerrar",
+            "aceptar cookies",
             "accetta",
             "accetta tutto",
+            "accetta tutti",
+            "accetta tutti i cookie",
+            "accetta e chiudi",
+            "accetto",
+            "acconsento",
             "akzeptieren",
             "alle akzeptieren",
             "alle zulassen",
             "zustimmen",
+            "alle cookies akzeptieren",
+            "akzeptieren und schließen",
             "aceitar",
             "aceitar todos",
+            "aceitar e fechar",
             "accepteren",
             "alles accepteren",
+            "alle cookies accepteren",
+            "akkoord",
         ]
     )
+    # Answers that get past an intro, age or warning gate. Matched as whole labels, and only
+    # inside the layer that blocks the page, so an "Explore" link on the page itself is safe.
     gate_texts: list[str] = Field(
         default_factory=lambda: [
             "enter",
@@ -117,21 +149,76 @@ class CaptureSettings(BaseModel):
             "enter experience",
             "click to enter",
             "tap to enter",
-            "explore",
-            "start",
-            "start experience",
-            "begin",
-            "skip",
-            "skip intro",
-            "continue to site",
             "enter with sound",
             "enter without sound",
             "sound on",
             "sound off",
+            "skip",
+            "skip intro",
+            "start",
+            "start experience",
+            "begin",
+            "explore",
+            "continue",
+            "continue to site",
+            "ok",
+            "okay",
+            "got it",
+            "i understand",
+            "i agree",
+            "agree",
+            "yes",
+            "yes, i am",
+            "i am over 18",
+            "i'm over 18",
+            "i am 18 or older",
+            "i am of legal age",
+            "i am over 21",
+            "i'm over 21",
+            "si",
+            "sì",
+            "sí",
+            "oui",
+            "ja",
+            "sim",
             "entrer",
+            "entrez",
             "découvrir",
             "entrar",
+            "entra",
             "eintreten",
+            "weiter",
+            "continuar",
+            "continua",
+        ]
+    )
+    # Words that show a blocking layer is a gate, not a full-screen site.
+    gate_cues: list[str] = Field(
+        default_factory=lambda: [
+            "age",
+            "years",
+            "18",
+            "21",
+            "legal",
+            "alcohol",
+            "drink",
+            "enter",
+            "sound",
+            "warning",
+            "heads up",
+            "flashing",
+            "epilep",
+            "motion",
+            "continue",
+            "confirm",
+            "verify",
+            "età",
+            "anni",
+            "alcol",
+            "âge",
+            "edad",
+            "alter",
+            "alkohol",
         ]
     )
     consent_scopes: list[str] = Field(
@@ -164,6 +251,38 @@ class CaptureSettings(BaseModel):
             "request blocked",
         ]
     )
+    # A parked or for-sale domain: the award entry is long gone.
+    parked_patterns: list[str] = Field(
+        default_factory=lambda: [
+            "domain is for sale",
+            "domain may be for sale",
+            "buy this domain",
+            "get this domain",
+            "make an offer on this domain",
+            "looking for a domain",
+            "domain has expired",
+            "this domain is parked",
+            "parked free",
+            "hugedomains",
+            "sedo domain parking",
+        ]
+    )
+    parked_paths: list[str] = Field(default_factory=lambda: ["/lander"])
+    # A domain taken over by spam. Matched in the title, or this many times in the text.
+    spam_patterns: list[str] = Field(
+        default_factory=lambda: [
+            "casino",
+            "no kyc",
+            "sportsbook",
+            "betting site",
+            "online slots",
+            "online pokies",
+            "payday loan",
+            "viagra",
+            "cialis",
+        ]
+    )
+    spam_min_mentions: int = 3
     not_found_patterns: list[str] = Field(
         default_factory=lambda: [
             "page not found",
@@ -224,8 +343,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    capture_version: str = "2.0.0"
-    analysis_version: str = "2.0.0"
+    capture_version: str = "2.1.0"  # 2.1: gates, stills, GPU, user agent, new QA flags
+    analysis_version: str = "2.1.0"  # 2.1: every capture metric reaches the features
     data_dir: Path = PROJECT_ROOT / "data"
     manifest_path: Path = PROJECT_ROOT / "manifest" / "sites.csv"
     capture: CaptureSettings = Field(default_factory=CaptureSettings)

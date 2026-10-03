@@ -1,7 +1,11 @@
+from datetime import UTC, datetime
+
 from PIL import Image, ImageDraw
 
+from taste_engine.analysis.features import motion_features
 from taste_engine.analysis.layout import layout_features
 from taste_engine.analysis.pixels import pixel_features
+from taste_engine.schemas import CaptureRecord, CaptureStatus, UXMetrics, Variant
 from taste_engine.settings import AnalysisSettings
 
 CFG = AnalysisSettings()
@@ -84,3 +88,25 @@ def test_type_scale_and_spacing_regularity():
     assert features["display_ratio"] == 6.0
     assert features["spacing_regularity"] == 0.75
     assert features["font_families"] == 1
+
+
+def test_every_capture_metric_reaches_the_features():
+    record = CaptureRecord(
+        capture_id="0001-original",
+        site_id=1,
+        variant=Variant.ORIGINAL,
+        requested_url="https://a.test/",
+        status=CaptureStatus.OK,
+        capture_version="2.1.0",
+        captured_at=datetime.now(UTC),
+        duration_s=1.0,
+        viewport_width=1440,
+        viewport_height=900,
+        metrics=UXMetrics(idle_motion_mutations=42, long_task_ms=120.0),
+    )
+    animations = {"animations": [{"kind": "CSSAnimation", "duration_ms": 800, "easing": "ease"}]}
+    motion = motion_features(record, animations)
+
+    assert set(UXMetrics.model_fields) <= set(motion)  # a new metric needs no change in features
+    assert motion["idle_motion_mutations"] == 42 and motion["long_task_ms"] == 120.0
+    assert motion["median_duration_ms"] == 800

@@ -26,25 +26,20 @@ def _read(path: Path) -> Any:
 
 
 def motion_features(record: CaptureRecord, animations: dict[str, Any]) -> dict[str, object]:
+    """Every measured metric exactly as captured, so a new metric reaches training without a
+    change here, plus a few summaries of the animation list."""
     items = animations.get("animations", [])
     durations = [a["duration_ms"] for a in items if a.get("duration_ms")]
-    metrics = record.metrics
     return {
+        **record.metrics.model_dump(),
+        "libraries": [name for name, used in record.libraries.items() if used],
+        "gsap_calls": record.gsap_call_count,
+        "reel_seconds": record.reel_seconds,
         "animation_count": len(items),
         "animation_kinds": dict(Counter(a["kind"] for a in items)),
         "median_duration_ms": statistics.median(durations) if durations else None,
         "distinct_easings": len({a["easing"] for a in items if a.get("easing")}),
         "infinite_animations": sum(1 for a in items if a.get("iterations") == -1),
-        "gsap_calls": record.gsap_call_count,
-        "libraries": [name for name, used in record.libraries.items() if used],
-        "inline_motion_mutations": metrics.inline_motion_mutations,
-        "content_visible_ms": metrics.content_visible_ms,
-        "largest_contentful_paint_ms": metrics.largest_contentful_paint_ms,
-        "cumulative_layout_shift": metrics.cumulative_layout_shift,
-        "dropped_frame_ratio": metrics.dropped_frame_ratio,
-        "scroll_hijacked": metrics.scroll_hijacked,
-        "reduced_motion_respected": metrics.reduced_motion_respected,
-        "transfer_bytes": metrics.transfer_bytes,
     }
 
 

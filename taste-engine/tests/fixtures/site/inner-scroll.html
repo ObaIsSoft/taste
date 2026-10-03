@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inner Scroll Studio</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: Helvetica, sans-serif; }
+  #scroller { height: 100vh; overflow-y: auto; }
+  section { height: 900px; display: grid; place-items: center; font-size: 64px; }
+  section:nth-child(odd) { background: #e0f2fe; } section:nth-child(even) { background: #fde68a; }
+</style>
+</head>
+<body>
+<div id="scroller">
+  <section>Alpha</section><section>Beta</section><section>Gamma</section><section>Delta</section>
+</div>
+</body>
+</html>

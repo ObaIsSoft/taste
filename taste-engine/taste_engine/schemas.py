@@ -57,7 +57,7 @@ class Still(BaseModel):
     index: int
     file: str
     scroll_y: int
-    method: str  # "top", "native" or "wheel"
+    method: str  # "top", "native", "inner" (an element inside the page scrolls) or "wheel"
 
 
 class UXMetrics(BaseModel):
@@ -70,6 +70,7 @@ class UXMetrics(BaseModel):
     mean_frame_ms: float | None = None
     dropped_frame_ratio: float | None = None
     inline_motion_mutations: int | None = None
+    idle_motion_mutations: int | None = None  # JavaScript motion while nobody touches the page
     scroll_hijacked: bool | None = None
     scroll_signals: list[str] = Field(default_factory=list)
     reduced_motion_respected: bool | None = None
@@ -80,10 +81,14 @@ class UXMetrics(BaseModel):
 
 class QualityFlags(BaseModel):
     blank_hero: bool = False
-    bot_block: bool = False
+    bot_block: bool = False  # a bot wall refused the page
+    site_down: bool = False  # the server failed (5xx), for everyone
     not_found: bool = False
-    navigated_away: bool = False
-    overlay_remaining: bool = False
+    parked: bool = False  # the domain is parked or for sale
+    spam: bool = False  # the domain now serves spam
+    navigated_away: bool = False  # the capture ended on another site or another page
+    overlay_remaining: bool = False  # consent UI still covers the page
+    gate_remaining: bool = False  # an age, warning or intro gate still blocks the page
     reel_missing: bool = False
     notes: list[str] = Field(default_factory=list)
 
@@ -93,9 +98,13 @@ class QualityFlags(BaseModel):
         return not (
             self.blank_hero
             or self.bot_block
+            or self.site_down
             or self.not_found
+            or self.parked
+            or self.spam
             or self.navigated_away
             or self.overlay_remaining
+            or self.gate_remaining
             or self.reel_missing
         )
 
