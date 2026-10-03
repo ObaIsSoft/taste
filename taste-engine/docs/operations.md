@@ -51,13 +51,35 @@ Append an entry for every change that deletes or rewrites data.
 - **Why.** v2 is a fresh start: v1 votes came from one person, were made against different captures,
   and do not tie a vote to a voter.
 - **Backed up first.** `match_history` and `ratings` were exported to
-  `taste-engine/data_v1_archive/supabase/`, with their schema in `v1_schema.sql`. The row counts are
-  recorded in `data_v1_archive/supabase/README.md`.
-- **What was dropped.** The v1 tables `match_history`, `ratings` and `voters`, by
+  `taste-engine/data_v1_archive/supabase/`, with their schema in `v1_schema.sql`: 771
+  `match_history` rows and 99 `ratings` rows, matching the live tables. There was no `voters`
+  table and no storage bucket.
+- **What was dropped.** The v1 tables `match_history` and `ratings`, by
   `supabase/migrations/0001_v2_voting.sql`. Their open anonymous policies went with them.
-- **What was created.** The v2 voting schema: tables, rules, agreement views, private storage.
+- **What was created.** The v2 voting schema: 10 tables, 11 views, 12 dimensions, round
+  targets (visual 200, motion 100). Checked after: every table has row-level security, and the
+  `anon` and `authenticated` roles reach no table, view or function.
 - **Restore v1 if ever needed.** Run `v1_schema.sql` in a separate Supabase project (it opens
   tables to anonymous writes, so never in this one), then load the exported JSON.
+
+### 2026-10-03: pilot published and calibration set
+
+- **Published.** The 90 pilot captures that passed QA (capture 2.3.0, analysis 2.1.0), 423 files,
+  99 MB. Claude's check was off (`TASTE_PUBLISH_REQUIRES_DESCRIPTION=false`: no API credit), so
+  every still was checked by eye against the same rule.
+- **Excluded by that check** (`in_pool` false, reason in `qa_note`): 0230 (sign-up pop-up on the
+  last still), 0234 and 0680 (discount pop-ups on every still), 0349 (intro dialog), 0733
+  (location selector), 0900 (under construction). 84 captures are in the pool, all with reels.
+- **Calibration**, picked by `taste calibrate --pick` from the 84:
+  - visual, 14 sites, 91 pairs: 133, 224, 271, 284, 292, 298, 348, 382, 446, 625, 747, 814, 939, 949;
+  - motion, 8 of those, 28 pairs: 133, 224, 271, 284, 382, 625, 814, 939.
+- **Smoke test.** Voter `smoke-test` cast 6 visual votes on a desktop, 1 motion vote and 1 phone
+  vote on the live site; all were recorded with their `client` details and events. Then all of
+  it was deleted with the SQL in the runbook: 5 events, 8 votes, 10 served pairs, 1 voter.
+- **Voters added.** Leonardo, Michelangelo, Raphael, Donatello, Obafemi, Frida. Their links are
+  printed by `taste voters list`.
+- **Vercel.** `main` fast-forwarded to `v2-rebuild` and deployed. The v1 `SUPABASE_KEY` variable was
+  removed; the API reads `SUPABASE_SERVICE_KEY`.
 
 ## Runbooks
 

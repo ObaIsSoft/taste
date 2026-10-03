@@ -770,6 +770,15 @@ Postgres. What changed, and why:
 
 **Pilot plan:** 100 sites, 14 visual and 8 motion calibration sites, four designers.
 
+**Live, the same day.** The 100 pilot sites were drawn at random from the 1,006 (ids 1 and 2
+excluded; they were the development sites). 90 passed QA and were published. Claude's check could
+not run (no API credit), so every still was checked by eye against its rule. That took out six
+more: four pop-ups the scraper did not close (two discount offers, a sign-up box, a location
+selector), one intro dialog, and one under-construction page. 84 sites are in the pool. The
+voting site moved to v2 with six voters (four designers, two spares). Publishing also exposed
+transient Supabase failures (a stalled connection, an HTTP 520); uploads now retry them instead
+of stopping the run.
+
 ## Lessons From v1 (kept from retired notes)
 
 These came from documents retired in the clean-up (`madpo.md`, `training.md`, `alternative.md`,
