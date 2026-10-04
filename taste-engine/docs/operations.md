@@ -108,6 +108,24 @@ Append an entry for every change that deletes or rewrites data.
 - **To undo,** remove the key: `update votes set client = client - 'timing'
   where client -> 'timing' ->> 'source' in ('wall_clock', 'none');`
 
+### 2026-10-04: votes pinned to the exact media they showed (migrations 0003, 0004)
+
+- **Why.** A vote named only a capture id, and publishing again overwrote media under the same
+  paths, so a re-capture would have silently changed what old votes point at.
+- **Backed up first.** `taste votes export`, kept as `data/votes/votes-2026-10-04-1906.jsonl` and
+  `vote_events-2026-10-04-1906.jsonl` (29 votes, 60 events).
+- **Checked first.** All 423 files in storage were byte-identical (md5) to the local files, so the
+  votes already cast could be pinned truthfully to a fingerprint of the local files.
+- **What changed.** 0003 (rehearsed with a rollback, then applied) added `capture_media` (every
+  published version, append-only), `captures.media_id`, `left_media`/`right_media` on served
+  pairs and votes (filled when a pair is served, then fixed), and rules that a site's URL and a
+  capture's site never change. All 90 pilot captures were then published again as versions under
+  their fingerprints (`<capture>/<media_id>/<file>`); all 423 version files were checked in
+  storage against their recorded sha256 and md5. 0004 (rehearsed, then applied) pinned the 36
+  pairs served and 29 votes cast before it to those versions and made pins required.
+- **Left in storage.** The files from before, at `<capture>/<file>`, are no longer referenced
+  (about 99 MB). They can be deleted later to free space; nothing points at them.
+
 ## Runbooks
 
 ### Cutover from v1 to v2 (one window)
@@ -118,7 +136,8 @@ v1's site breaks the moment its tables are dropped, so these run back to back.
    the live tables.
 2. **Apply the schema.** From `taste-engine/`, run each file in `supabase/migrations/` in order:
    `set -a; . ./.env; set +a; psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_v2_voting.sql`,
-   then `0002_active_time.sql`, or paste them into the Supabase SQL editor.
+   then `0002_active_time.sql` and `0003_pinned_media.sql`, or paste them into the Supabase SQL
+   editor. `0004_require_pinned_media.sql` comes after the first publish (step 3).
 3. **Check and publish the pilot.** Each step runs on every site the same way; there are no
    per-site exceptions:
    - `taste analyze --ids "$(cat manifest/pilot-ids.txt)"`
@@ -190,18 +209,25 @@ delete from voters where name = 'smoke-test';
 - **Pilot votes are real data.** Never flush them. They carry into the full run.
 - **Do not change the dimension list or the calibration sites during a phase.** Votes before and
   after would not be comparable; designers' own words already catch anything the list misses.
-- **Re-capturing a site keeps its capture id.** Its votes stay attached. Note the new capture
-  version in the database history.
+- **Re-capturing a site publishes a new version of its media; it never replaces the old one.**
+  `taste publish` names each version by a fingerprint of its files, uploads them under it, and
+  records it in `capture_media`. Pairs served from then on show the new version; every pair and
+  vote served before keeps pointing at the version it showed (`left_media`, `right_media`), whose
+  files stay in storage. Note the re-capture in the database history.
+- **A site id always means the same URL.** The database refuses to change a site's URL, and
+  publish refuses a capture whose URL is not its site's.
 - **Take a capture out of the pool:** `taste captures exclude 0234-original --reason "..."`. The
   reason is kept in its `qa_note`, which keeps it out on later publishes; votes already cast stay.
 
 ### Exports
 
 - **Every vote, plus which reels were played and which live sites opened:**
-  `taste votes export` writes `data/votes/votes.jsonl` and `vote_events.jsonl`. The files are
-  git-ignored; copy them somewhere safe.
-- **After each voting day,** run it by hand. There are no automatic backups on the free tier, and
-  no scheduled export is set up.
+  `taste votes export` writes `data/votes/votes.jsonl` and `vote_events.jsonl`, and with them what
+  the votes point at: `capture_media.jsonl` (each media version, its files and their hashes) and
+  `sites.jsonl` (each site id's URL). The files are git-ignored; copy them somewhere safe.
+- **After each voting day,** run it by hand, and keep a dated copy (each export overwrites the
+  last). It is a backup, not the final dataset, which can be rebuilt from any complete export.
+  There are no automatic backups on the free tier, and no scheduled export is set up.
 
 ### Exporting v1
 
