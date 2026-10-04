@@ -145,24 +145,31 @@ def pair():
         raise BadRequest("round must be visual or motion")
     served = _rpc("next_pair", {"p_code": _code(), "p_round": round_kind})
     ids = [served["left_capture"], served["right_capture"]]
-    rows = (
+    pinned = [served["left_media"], served["right_media"]]
+    rows = db().table("captures").select("id,final_url,sites(url)").in_("id", ids).execute().data
+    # Show exactly the media version the pair was served with, even if the capture has since
+    # been published again: the vote records that version.
+    versions = (
         db()
-        .table("captures")
-        .select("id,stills,reel_path,final_url,sites(url)")
-        .in_("id", ids)
+        .table("capture_media")
+        .select("capture_id,media_id,stills,reel_path")
+        .in_("capture_id", ids)
+        .in_("media_id", pinned)
         .execute()
         .data
     )
+    media = {(v["capture_id"], v["media_id"]): v for v in versions}
     captures = {row["id"]: row for row in rows}
-    paths = [p for row in rows for p in row["stills"]]
-    paths += [row["reel_path"] for row in rows if row["reel_path"] and round_kind == "motion"]
+    sides = [captures[i] | media[(i, m)] for i, m in zip(ids, pinned, strict=True)]
+    paths = [p for side in sides for p in side["stills"]]
+    paths += [side["reel_path"] for side in sides if side["reel_path"] and round_kind == "motion"]
     urls = _signed(paths)
     return jsonify(
         token=served["token"],
         round=round_kind,
         reason_requested=served["reason_requested"],
-        left=_side(captures[ids[0]], urls),
-        right=_side(captures[ids[1]], urls),
+        left=_side(sides[0], urls),
+        right=_side(sides[1], urls),
     )
 
 

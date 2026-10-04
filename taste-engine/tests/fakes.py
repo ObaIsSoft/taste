@@ -96,6 +96,21 @@ class FakeSupabase:
                     "sites": {"url": "https://b.test/"},
                 },
             ],
+            # the published versions of each capture's media; served pairs pin one
+            "capture_media": [
+                {
+                    "capture_id": "0001-original",
+                    "media_id": "m1-0001-original",
+                    "stills": ["0001-original/screen-1.jpg"],
+                    "reel_path": "0001-original/reel.mp4",
+                },
+                {
+                    "capture_id": "0002-original",
+                    "media_id": "m1-0002-original",
+                    "stills": ["0002-original/screen-1.jpg"],
+                    "reel_path": None,
+                },
+            ],
         }
         self.storage = self
 

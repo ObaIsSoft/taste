@@ -2,45 +2,74 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from fakes import FakeSupabase
+from storage3.exceptions import StorageApiError
 
 from taste_engine import db, manifest
 from taste_engine.capture import store
 from taste_engine.schemas import CaptureRecord, CaptureStatus, Cohort, QualityFlags, Still, Variant
 from taste_engine.settings import Settings
 
+KEYS = {"sites": ("id",), "captures": ("id",), "capture_media": ("capture_id", "media_id")}
+
 
 class FakeDB:
-    """Records what publish would send to Supabase."""
+    """What publish touches, in memory: tables, and a bucket that, like the real one, refuses to
+    overwrite a file."""
 
     def __init__(self, reported=()):
-        self.uploads, self.upserts, self.reported = [], [], set(reported)
+        self.files, self.uploads = {}, []
+        self.rows = {name: {} for name in KEYS}
+        for capture_id in reported:
+            self.rows["captures"][(capture_id,)] = {
+                "id": capture_id,
+                "qa_note": "reported broken by a voter",
+            }
         self.storage = SimpleNamespace(
             list_buckets=lambda: [], create_bucket=lambda *a, **k: None, from_=lambda _b: self
         )
-        self._table = None
-        self._filter = None
 
     def upload(self, path, data, options):
+        if path in self.files:
+            raise StorageApiError("The resource already exists", "Duplicate", 409)
+        self.files[path] = data
         self.uploads.append((path, options["content-type"]))
 
     def table(self, name):
-        self._table = name
+        return _Table(self, name)
+
+    def row(self, name, *key):
+        return self.rows[name].get(key)
+
+
+class _Table:
+    def __init__(self, fake, name):
+        self.fake, self.name, self.filters, self.action = fake, name, [], ("select", "*")
+
+    def select(self, columns="*"):
+        self.action = ("select", columns)
         return self
 
-    def upsert(self, row, **_):
-        self.upserts.append((self._table, row))
+    def eq(self, column, value):
+        self.filters.append((column, value))
         return self
 
-    def select(self, *_):
-        return self
-
-    def eq(self, _column, value):
-        self._filter = value
+    def upsert(self, row, ignore_duplicates=False, **_):
+        self.action = ("upsert", row, ignore_duplicates)
         return self
 
     def execute(self):
-        note = "reported broken by a voter" if self._filter in self.reported else None
-        return SimpleNamespace(data=[{"qa_note": note}] if self._filter else [])
+        table = self.fake.rows[self.name]
+        if self.action[0] == "upsert":
+            _, row, ignore = self.action
+            key = tuple(row[k] for k in KEYS[self.name])
+            if not (key in table and ignore):
+                table[key] = {**table.get(key, {}), **row}
+            return SimpleNamespace(data=[table[key]])
+        found = [r for r in table.values() if all(r.get(c) == v for c, v in self.filters)]
+        columns = self.action[1]
+        if columns != "*":  # like the database: every selected column, null when never set
+            found = [{c: r.get(c) for c in columns.split(",")} for r in found]
+        return SimpleNamespace(data=found)
 
 
 CLEAN = {"obstruction": "none", "page_state": "live_site"}
@@ -51,7 +80,7 @@ def _capture(settings, site_id, variant=Variant.ORIGINAL, passed=True, descripti
         capture_id=f"{site_id:04d}-{variant.value}",
         site_id=site_id,
         variant=variant,
-        requested_url="https://a.test/",
+        requested_url=f"https://{'abcde'[site_id - 1]}.test/",
         status=CaptureStatus.OK,
         capture_version="2.0.0",
         captured_at=datetime.now(UTC),
@@ -69,9 +98,10 @@ def _capture(settings, site_id, variant=Variant.ORIGINAL, passed=True, descripti
     store.write_record(record, directory)
     if description is not None:
         store.write_json(directory / "description.json", {"description": description})
+    return directory
 
 
-def test_publish_puts_only_votable_originals_online(tmp_path):
+def _settings(tmp_path):
     settings = Settings(
         data_dir=tmp_path,
         manifest_path=tmp_path / "sites.csv",
@@ -79,6 +109,11 @@ def test_publish_puts_only_votable_originals_online(tmp_path):
     )
     entries = manifest.entries_from_urls([f"https://{c}.test/" for c in "abcde"], Cohort.AWARD, "t")
     manifest.write_manifest(entries, settings.manifest_path)
+    return settings
+
+
+def test_publish_puts_only_votable_originals_online(tmp_path):
+    settings = _settings(tmp_path)
     _capture(settings, 1)
     _capture(settings, 1, Variant.TYPOGRAPHY)
     _capture(settings, 2, passed=False)
@@ -92,13 +127,52 @@ def test_publish_puts_only_votable_originals_online(tmp_path):
     fake = FakeDB(reported={"0003-original"})
 
     assert db.publish(settings, fake) == 2  # the twin, the QA failure and 4 and 5 stay local
-    pooled = {row["id"]: row["in_pool"] for table, row in fake.upserts if table == "captures"}
+    pooled = {key[0]: row["in_pool"] for key, row in fake.rows["captures"].items()}
     assert pooled == {
         "0001-original": True,
         "0003-original": False,  # a voter reported it broken: published, but not served
     }
-    assert ("0001-original/reel.mp4", "video/mp4") in fake.uploads
+    assert fake.row("sites", 1)["url"] == "https://a.test/"
     assert not [path for path, _ in fake.uploads if path.startswith(("0001-typography", "0002"))]
+
+
+def test_media_is_published_as_a_version_and_never_overwritten(tmp_path):
+    settings = _settings(tmp_path)
+    directory = _capture(settings, 1)
+    fake = FakeDB()
+
+    db.publish(settings, fake)
+    first = fake.row("captures", "0001-original")["media_id"]
+    version = fake.row("capture_media", "0001-original", first)
+    assert version["stills"] == [f"0001-original/{first}/screen-1.jpg"]
+    assert version["reel_path"] == f"0001-original/{first}/reel.mp4"
+    assert set(version["files"]) == {*version["stills"], version["reel_path"]}
+    assert fake.row("captures", "0001-original")["stills"] == version["stills"]
+
+    db.publish(settings, fake)  # nothing changed: nothing uploaded, no new version
+    assert len(fake.uploads) == 2 and len(fake.rows["capture_media"]) == 1
+
+    (directory / "screen-1.jpg").write_bytes(b"a new capture of the hero")
+    db.publish(settings, fake)  # new media: a new version beside the old one
+    second = fake.row("captures", "0001-original")["media_id"]
+    assert second != first and len(fake.rows["capture_media"]) == 2
+    assert fake.files[f"0001-original/{first}/screen-1.jpg"] == b"jpg"  # what voters saw stays
+    assert fake.files[f"0001-original/{second}/screen-1.jpg"] == b"a new capture of the hero"
+
+
+def test_a_capture_of_another_url_is_never_published_as_this_site(tmp_path):
+    settings = _settings(tmp_path)
+    directory = _capture(settings, 1)
+    record = store.read_record(directory)
+    store.write_record(
+        record.model_copy(update={"requested_url": "https://other.test/"}), directory
+    )
+    try:
+        db.publish(settings, FakeDB())
+    except ValueError as error:
+        assert "site 1 is https://a.test/" in str(error)
+    else:
+        raise AssertionError("expected a ValueError")
 
 
 def test_fourteen_sites_make_ninety_one_calibration_pairs():

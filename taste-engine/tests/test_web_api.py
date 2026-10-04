@@ -35,6 +35,8 @@ def test_pair_sends_signed_media_and_no_capture_ids(api):
         "token": "t-1",
         "left_capture": "0002-original",
         "right_capture": "0001-original",
+        "left_media": "m1-0002-original",
+        "right_media": "m1-0001-original",
         "reason_requested": True,
     }
     body = client.get("/api/pair?round=motion").get_json()
@@ -53,9 +55,34 @@ def test_visual_rounds_do_not_sign_reels(api):
         "token": "t-2",
         "left_capture": "0001-original",
         "right_capture": "0002-original",
+        "left_media": "m1-0001-original",
+        "right_media": "m1-0002-original",
         "reason_requested": False,
     }
     assert client.get("/api/pair?round=visual").get_json()["left"]["reel"] is None
+
+
+def test_a_pair_shows_the_media_version_it_was_served_with(api):
+    client, fake = api
+    # 0001 was published again after this pair was served: the pair still shows the old version
+    fake.tables["capture_media"].append(
+        {
+            "capture_id": "0001-original",
+            "media_id": "m2-0001-original",
+            "stills": ["0001-original/m2/screen-1.jpg"],
+            "reel_path": "0001-original/m2/reel.mp4",
+        }
+    )
+    fake.rpc_results["next_pair"] = {
+        "token": "t-3",
+        "left_capture": "0001-original",
+        "right_capture": "0002-original",
+        "left_media": "m1-0001-original",
+        "right_media": "m1-0002-original",
+        "reason_requested": False,
+    }
+    body = client.get("/api/pair?round=visual").get_json()
+    assert body["left"]["stills"] == ["https://signed.test/0001-original/screen-1.jpg"]
 
 
 def test_database_rule_errors_become_client_errors(api):

@@ -6,6 +6,7 @@ machine or the voting API's server.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import secrets
@@ -79,17 +80,72 @@ def ensure_bucket(db: Client, settings: Settings) -> None:
         db.storage.create_bucket(settings.storage_bucket, options={"public": False})
 
 
-def _upload(db: Client, settings: Settings, directory: Path, name: str) -> str:
-    path = f"{directory.name}/{name}"
+def media_fingerprint(directory: Path, names: list[str]) -> tuple[str, dict[str, str]]:
+    """What a capture shows, as one id: a hash over its files' hashes, in order. New media gets
+    a new id, and with it new storage paths, so nothing a voter has seen is ever overwritten.
+    Returns the id and each file's sha256."""
+    digests = {name: hashlib.sha256((directory / name).read_bytes()).hexdigest() for name in names}
+    whole = hashlib.sha256("".join(f"{n}:{d}\n" for n, d in digests.items()).encode())
+    return whole.hexdigest()[:16], digests
+
+
+def _upload(db: Client, settings: Settings, directory: Path, name: str, prefix: str) -> str:
+    """Upload one file under its media id. A path is never overwritten: if it exists, it holds
+    these same bytes, because the media id is a hash of them."""
+    path = f"{prefix}/{name}"
     data = (directory / name).read_bytes()
     upload = partial(
         db.storage.from_(settings.storage_bucket).upload,
         path,
         data,
-        {"content-type": CONTENT_TYPES[Path(name).suffix], "upsert": "true"},
+        {"content-type": CONTENT_TYPES[Path(name).suffix], "upsert": "false"},
     )
-    _retry(settings, f"upload of {path}", upload)
+    try:
+        _retry(settings, f"upload of {path}", upload)
+    except StorageApiError as error:
+        if str(error.status) != "409" and "exists" not in str(error.message).lower():
+            raise
     return path
+
+
+def _publish_media(
+    db: Client, settings: Settings, directory: Path, record: CaptureRecord
+) -> tuple[str, list[str], str | None]:
+    """Publish the capture's media as a version of its own, unless that version is already
+    there. Returns its media id and storage paths. Versions are kept for good: votes point at
+    them."""
+    names = [still.file for still in record.stills]
+    names += [record.reel_file] if record.reel_file else []
+    media_id, digests = media_fingerprint(directory, names)
+    prefix = f"{record.capture_id}/{media_id}"
+    stills = [f"{prefix}/{still.file}" for still in record.stills]
+    reel = f"{prefix}/{record.reel_file}" if record.reel_file else None
+    known = _retry(
+        settings,
+        f"media of {record.capture_id}",
+        db.table("capture_media")
+        .select("media_id")
+        .eq("capture_id", record.capture_id)
+        .eq("media_id", media_id)
+        .execute,
+    )
+    if known.data:
+        return media_id, stills, reel
+    for name in names:
+        _upload(db, settings, directory, name, prefix)
+    version = {
+        "capture_id": record.capture_id,
+        "media_id": media_id,
+        "capture_version": record.capture_version,
+        "stills": stills,
+        "reel_path": reel,
+        "files": {f"{prefix}/{name}": digest for name, digest in digests.items()},
+    }
+    insert = db.table("capture_media").upsert(
+        version, on_conflict="capture_id,media_id", ignore_duplicates=True
+    )
+    _retry(settings, f"media of {record.capture_id}", insert.execute)
+    return media_id, stills, reel
 
 
 def _optional_json(path: Path) -> Any | None:
@@ -143,6 +199,11 @@ def publish(settings: Settings, db: Client, capture_ids: list[str] | None = None
         if not votable(record, described.get("description"), settings):
             continue
         entry = entries[record.site_id]
+        if record.requested_url != str(entry.url):  # a site id always means the same URL
+            raise ValueError(
+                f"{record.capture_id} captured {record.requested_url}, "
+                f"but site {entry.id} is {entry.url}"
+            )
         site = {
             "id": entry.id,
             "url": str(entry.url),
@@ -150,15 +211,16 @@ def publish(settings: Settings, db: Client, capture_ids: list[str] | None = None
             "category": entry.category,
         }
         _retry(settings, f"site {entry.id}", db.table("sites").upsert(site).execute)
-        stills = [_upload(db, settings, directory, still.file) for still in record.stills]
-        reel = _upload(db, settings, directory, record.reel_file) if record.reel_file else None
         existing = _retry(
             settings,
             f"note of {record.capture_id}",
             db.table("captures").select("qa_note").eq("id", record.capture_id).execute,
         )
         reported = bool(existing.data and existing.data[0]["qa_note"])
-        row = capture_row(record, directory, stills, reel, reported)
+        # The media first, then the capture switches to it in one step: until then it keeps
+        # showing the media it had, which the pairs already served pin.
+        media_id, stills, reel = _publish_media(db, settings, directory, record)
+        row = capture_row(record, directory, stills, reel, reported) | {"media_id": media_id}
         _retry(settings, record.capture_id, db.table("captures").upsert(row).execute)
         published += 1
         log.info("published %s", record.capture_id)
@@ -261,8 +323,13 @@ def _write_jsonl(rows: list[dict[str, Any]], path: Path) -> None:
 
 def export_votes(db: Client, path: Path) -> int:
     """Every vote, and next to it every vote event (which reels were played, which live sites
-    opened): motion reasons are only trusted when the reels were watched."""
+    opened): motion reasons are only trusted when the reels were watched. With them, what the
+    votes point at, so the export stands on its own: each media version a vote pins (its files
+    and their hashes) and each site's URL."""
     rows = select_all(db, "votes", ("id",))
     _write_jsonl(rows, path)
     _write_jsonl(select_all(db, "vote_events", ("id",)), path.with_name("vote_events.jsonl"))
+    media = select_all(db, "capture_media", ("capture_id", "media_id"))
+    _write_jsonl(media, path.with_name("capture_media.jsonl"))
+    _write_jsonl(select_all(db, "sites", ("id",)), path.with_name("sites.jsonl"))
     return len(rows)

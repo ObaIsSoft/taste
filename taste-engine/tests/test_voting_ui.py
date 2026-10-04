@@ -64,6 +64,8 @@ class VotingFake(FakeSupabase):
                 "token": f"t-{next(self.tokens)}",
                 "left_capture": "0001-original",
                 "right_capture": "0002-original",
+                "left_media": "m1-0001-original",
+                "right_media": "m1-0002-original",
                 "reason_requested": self.reason_requested,
             }
         elif name == "cast_vote":
@@ -462,7 +464,7 @@ def test_the_reason_box_is_always_there_and_optional_unless_asked(site):
 def test_how_each_vote_was_seen_is_recorded(site):
     url, fake = site
     screens = [f"0002-original/screen-{i}.jpg" for i in range(1, 5)]  # enough to scroll
-    fake.tables["captures"][1]["stills"] = screens
+    fake.tables["capture_media"][1]["stills"] = screens  # the version the pair pins
     fake.images.update({path: _still("#b45309", path) for path in screens})
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()

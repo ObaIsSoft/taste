@@ -16,6 +16,15 @@ MIGRATIONS = sorted((Path(__file__).parent.parent / "supabase" / "migrations").g
 
 pytestmark = pytest.mark.postgres
 
+# What taste publish does for each capture: register its media as a version, then point at it.
+PUBLISH_MEDIA = """
+    insert into capture_media (capture_id, media_id, capture_version, stills, reel_path, files)
+    select id, 'm1-' || id, capture_version, stills, reel_path, '{}' from captures
+     where media_id is null
+    on conflict do nothing;
+    update captures set media_id = 'm1-' || id where media_id is null;
+"""
+
 
 def _bin(name):
     directory = os.environ.get("PG_BIN")
@@ -82,6 +91,9 @@ def db():
                    array[format('%s-original/screen-1.jpg', lpad(i::text, 4, '0'))],
                    format('%s-original/reel.mp4', lpad(i::text, 4, '0')), true
               from generate_series(1, 4) i;
+            """
+            + PUBLISH_MEDIA
+            + """
             insert into voters (name, invite_code) values ('Ada', 'code-ada'), ('Bo', 'code-bo');
             insert into calibration_pairs (round, capture_a, capture_b) values
               ('visual', '0001-original', '0002-original'),
@@ -204,6 +216,9 @@ def _add_sites_and_voters(db):
                format('%s-original/reel.mp4', lpad(i::text, 4, '0')), true
           from generate_series(5, 8) i
         on conflict do nothing;
+        """
+        + PUBLISH_MEDIA
+        + """
         insert into voters (name, invite_code)
         values ('Cy', 'code-cy'), ('Di', 'code-di'), ('Ed', 'code-ed'), ('Fi', 'code-fi'),
                ('Gi', 'code-gi')
@@ -464,3 +479,47 @@ def test_time_on_screen_is_processed_apart_from_wall_clock_time(db):
     assert db.run(
         "select left_page_share from voter_bias where voter = 'Hu' and round = 'visual'"
     ) == [["1.000"]]
+
+
+def test_a_vote_keeps_pointing_at_what_it_showed(db):
+    _add_sites_and_voters(db)
+    db.run("insert into voters (name, invite_code) values ('Io', 'code-io')")
+    pair = _serve(db, "code-io", _c(5), _c(6))
+    _vote(db, pair, code="code-io")
+    pinned = f"select left_media, right_media from votes where token = '{pair['token']}'"
+    assert db.run(pinned) == [["m1-0005-original", "m1-0006-original"]]
+
+    # 0005 is captured again and published as a new version
+    db.run(
+        "insert into capture_media (capture_id, media_id, capture_version, stills, files) "
+        "values ('0005-original', 'm2-0005-original', '2.4.0', '{0005-original/m2/screen-1.jpg}', "
+        "'{}'); update captures set media_id = 'm2-0005-original' where id = '0005-original'"
+    )
+    assert db.run(pinned) == [["m1-0005-original", "m1-0006-original"]]  # the vote still points
+    later = _serve(db, "code-io", _c(5), _c(7))
+    assert db.run(f"select left_media from served_pairs where token = '{later['token']}'") == [
+        ["m2-0005-original"]
+    ]  # a pair served now shows the new version
+
+    # none of it can be rewritten: pins, published versions, which URL a site is
+    for change in (
+        f"update votes set left_media = 'm2-0005-original' where token = '{pair['token']}'",
+        f"update served_pairs set right_capture = '{_c(8)}' where token = '{pair['token']}'",
+        "update capture_media set stills = '{x}' where media_id = 'm1-0005-original'",
+        "delete from capture_media where media_id = 'm1-0005-original'",
+        "update sites set url = 'https://elsewhere.test/' where id = 5",
+        "update captures set site_id = 6 where id = '0005-original'",
+    ):
+        assert "55000" in db.error(change), change
+
+
+def test_a_capture_without_published_media_is_never_shown(db):
+    db.run(
+        "insert into sites (id, url, cohort) values (9, 'https://i.test/', 'award'); "
+        "insert into captures (id, site_id, variant, capture_version, qa_passed, stills, "
+        "reel_path, in_pool) values ('0009-original', 9, 'original', '2.4.0', true, "
+        "'{0009-original/screen-1.jpg}', '0009-original/reel.mp4', true)"
+    )
+    assert db.run("select servable(c, 'visual') from captures c where id = '0009-original'") == [
+        ["f"]
+    ]
