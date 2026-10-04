@@ -65,6 +65,15 @@ def summary(views: dict[str, list[dict[str, Any]]]) -> list[str]:
                     f"late {row['late_median_seconds']}), "
                     f"{row['fast_votes']} faster than the low-effort limit"
                 )
+                if row.get("timed_votes"):
+                    lines.append(
+                        f"    active time on {row['timed_votes']} timed votes: median "
+                        f"{row['median_active_seconds']} s (early "
+                        f"{row['early_median_active_seconds']}, late "
+                        f"{row['late_median_active_seconds']}) over {row['sittings']} "
+                        f"sitting(s); left the page on {row['left_page_votes']}, "
+                        f"idle-inflated wall-clock time on {row['idle_votes']}"
+                    )
         for row in views["voter_bias"]:
             if row["round"] == round_kind:
                 looked = (

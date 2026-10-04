@@ -70,6 +70,13 @@ def test_summary_counts_agreement_and_differences():
                 "early_median_seconds": 10.0,
                 "late_median_seconds": 6.0,
                 "sessions": 4,
+                "timed_votes": 100,
+                "median_active_seconds": 7.5,
+                "early_median_active_seconds": 9.0,
+                "late_median_active_seconds": 5.5,
+                "sittings": 5,
+                "left_page_votes": 6,
+                "idle_votes": 2,
             }
         ],
         "voter_bias": [
@@ -112,6 +119,8 @@ def test_summary_counts_agreement_and_differences():
         "  Ada and Bo: same verdict on 3 of 4 shared pairs (75%), opposite on 1",
         "  Ada: 120 votes in 4 session(s), median 8.5 s (early 10.0, late 6.0), "
         "3 faster than the low-effort limit",
+        "    active time on 100 timed votes: median 7.5 s (early 9.0, late 5.5) over 5 "
+        "sitting(s); left the page on 6, idle-inflated wall-clock time on 2",
         "  Ada on side_by_side: left 0.52, tie 0.1, can't decide 0.05, own words 0.3, "
         "saw both 1.0, scrolled both 0.8, opened live 0.02",
         "  wins by language: en 0.51 (300), it 0.4 (20)",

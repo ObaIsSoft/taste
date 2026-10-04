@@ -53,7 +53,120 @@ function clientDetails() {
     viewport_height: window.innerHeight,
     pixel_ratio: window.devicePixelRatio || 1,
     pointer: window.matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine',
+    timing: state.pair && timing.token === state.pair.token ? timingDetails() : undefined,
   };
+}
+
+// How long each pair was really looked at. The server's seconds_to_vote is wall-clock time, so a
+// tab left open overnight looks like hours of looking. These count only time the page was on
+// screen (visible), in front (focused), and in use (active): up to the idle cut-off after the
+// voter last moved, scrolled, typed, came back, or a reel played. They survive a reload, which
+// shows the same pair again. Only durations are kept, nothing outside this page.
+const TIMING_KEY = 'taste.timing.';
+const timing = {
+  token: null, running: false, visible: true, focused: true, last: 0, lastInput: 0, totals: null,
+};
+
+function idleCutoffMs() {
+  return 1000 * ((state.config && state.config.idle_cutoff_seconds) || 120);
+}
+
+// Add the time since the last update to the totals, by what the page was doing meanwhile.
+function tally(at = Date.now()) {
+  if (!timing.running) return;
+  const totals = timing.totals;
+  const span = Math.max(0, at - timing.last);
+  if (timing.visible) {
+    totals.visible_ms += span;
+    if (timing.focused) {
+      totals.focused_ms += span;
+      totals.idle_run_ms += span;
+      const from = Math.max(timing.last, timing.lastInput);
+      totals.active_ms += Math.max(0, Math.min(at, timing.lastInput + idleCutoffMs()) - from);
+    }
+  }
+  timing.last = at;
+}
+
+function saveTiming() {
+  if (!timing.token || !timing.totals) return;
+  try { sessionStorage.setItem(TIMING_KEY + timing.token, JSON.stringify(timing.totals)); } catch (error) { /* private mode */ }
+}
+
+function noteInput(force = false) {
+  if (!timing.running) return;
+  const at = Date.now();
+  if (!force && at - timing.lastInput < 1000) return;  // pointer moves come in floods
+  tally(at);
+  const totals = timing.totals;
+  totals.longest_idle_ms = Math.max(totals.longest_idle_ms, totals.idle_run_ms);
+  totals.idle_run_ms = 0;
+  timing.lastInput = at;
+}
+
+function startTiming(token) {
+  if (timing.running && timing.token === token) return;
+  pauseTiming();
+  let totals = null;
+  try { totals = JSON.parse(sessionStorage.getItem(TIMING_KEY + token)); } catch (error) { /* none */ }
+  if (totals) totals.resumed += 1;
+  const at = Date.now();
+  Object.assign(timing, {
+    token, running: true, last: at, lastInput: at,
+    visible: document.visibilityState === 'visible', focused: document.hasFocus(),
+    totals: totals || {
+      visible_ms: 0, focused_ms: 0, active_ms: 0, away_count: 0, blur_count: 0,
+      longest_idle_ms: 0, idle_run_ms: 0, resumed: 0,
+    },
+  });
+}
+
+function pauseTiming() {
+  if (!timing.running) return;
+  tally();
+  saveTiming();
+  timing.running = false;
+}
+
+function finishTiming(token) {
+  try { sessionStorage.removeItem(TIMING_KEY + token); } catch (error) { /* private mode */ }
+  if (timing.token === token) Object.assign(timing, { token: null, running: false, totals: null });
+}
+
+function timingDetails() {
+  tally();
+  const t = timing.totals;
+  const seconds = (ms) => Math.round(ms / 100) / 10;
+  return {
+    visible_s: seconds(t.visible_ms),
+    focused_s: seconds(t.focused_ms),
+    active_s: seconds(t.active_ms),
+    away_count: t.away_count,
+    blur_count: t.blur_count,
+    longest_idle_s: seconds(Math.max(t.longest_idle_ms, t.idle_run_ms)),
+    idle_cutoff_s: idleCutoffMs() / 1000,
+    resumed: t.resumed,
+  };
+}
+
+function onVisibility() {
+  if (!timing.running) return;
+  tally();
+  const visible = document.visibilityState === 'visible';
+  if (timing.visible && !visible) {
+    timing.totals.away_count += 1;
+    saveTiming();  // a phone may close a hidden page without warning
+  }
+  timing.visible = visible;
+  if (visible) noteInput(true);  // coming back is a sign of looking
+}
+
+function onFocusChange(focused) {
+  if (!timing.running) return;
+  tally();
+  if (timing.focused && !focused) timing.totals.blur_count += 1;
+  timing.focused = focused;
+  if (focused) noteInput(true);
 }
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -151,6 +264,7 @@ async function signIn(code) {
 
 // Drop everything about the signed-in voter, including a pair or reel still on screen.
 function forget() {
+  pauseTiming();
   saved.clear();
   Object.assign(state, {
     code: null, name: null, config: null, round: null, pair: null, pick: null, session: null, cast: 0,
@@ -271,6 +385,7 @@ function renderSide(side, data) {
     if (data.stills[0]) video.poster = data.stills[0];
     video.setAttribute('aria-label', `${name} recording`);
     video.addEventListener('play', () => logEvent(`play_${side}`), { once: true });
+    video.addEventListener('timeupdate', () => noteInput());  // watching a reel is looking
     media.append(video);
     card.querySelector('.pane-note').textContent = 'Recording';
   } else {
@@ -341,12 +456,14 @@ async function loadPair() {
     const pair = await api(`/api/pair?round=${round}`);
     if (state.code !== code || state.round !== round) return;  // signed out or switched meanwhile
     state.pair = pair;
+    startTiming(pair.token);
     for (const side of SIDES) renderSide(side, pair[side]);
     resetDecision();
     selectTab('left');
     refreshProgress();
   } catch (error) {
     state.pair = null;
+    pauseTiming();
     if (error.status === 404) show('done');
     else if (error.status === 401) signOut();
     else say(error.message);
@@ -382,6 +499,7 @@ async function submitVote(outcome) {
       client: clientDetails(),
     };
     await api('/api/vote', { method: 'POST', body: JSON.stringify(body) });
+    finishTiming(body.token);
     state.cast += 1;
     rememberTerms(body.terms);
     await loadPair();
@@ -411,6 +529,7 @@ function startRound(round) {
 }
 
 function chooseRound() {
+  pauseTiming();
   state.round = null;
   state.pair = null;
   show('rounds');
@@ -512,6 +631,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (submitter.id === 'submit-vote') submitVote(state.pick);
   });
   document.addEventListener('keydown', onKey);
+
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('focus', () => onFocusChange(true));
+  window.addEventListener('blur', () => onFocusChange(false));
+  for (const kind of ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart']) {
+    window.addEventListener(kind, () => noteInput(), { passive: true });
+  }
+  document.addEventListener('scroll', () => noteInput(), { capture: true, passive: true });
+  window.addEventListener('pagehide', pauseTiming);  // a reload resumes from the saved totals
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted && state.pair && !$('#voting').hidden) startTiming(state.pair.token);
+  });
 
   const code = inviteFromLink() || saved.get();
   if (code) signIn(code);

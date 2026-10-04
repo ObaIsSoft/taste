@@ -38,6 +38,7 @@ class VotingFake(FakeSupabase):
         super().__init__()
         self.tokens = itertools.count(1)
         self.reason_requested = True
+        self.resume = False  # like next_pair: an unanswered pair comes back after a refresh
         self.tables["dimensions"] = [
             {
                 "id": d,
@@ -55,6 +56,10 @@ class VotingFake(FakeSupabase):
 
     def rpc(self, name, params):
         if name == "next_pair":
+            served = self.rpc_results.get(name)
+            voted = {v["p_token"] for v in self.votes()}
+            if self.resume and served and served["token"] not in voted:
+                return super().rpc(name, params)
             self.rpc_results[name] = {
                 "token": f"t-{next(self.tokens)}",
                 "left_capture": "0001-original",
@@ -337,6 +342,76 @@ def test_someone_else_can_sign_out_from_the_round_choice(site):
         expect(page.get_by_label("Invite code")).to_be_visible()
         assert page.evaluate("localStorage.getItem('taste.inviteCode')") is None
         browser.close()
+
+
+# Lets a test switch the page to another tab and back: document.visibilityState follows it.
+_TAB_SWITCH = """
+(() => {
+  let hidden = false;
+  const state = () => (hidden ? 'hidden' : 'visible');
+  Object.defineProperty(document, 'visibilityState', { get: state });
+  Object.defineProperty(document, 'hidden', { get: () => hidden });
+  window.__setHidden = (value) => {
+    hidden = value;
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+})();
+"""
+
+
+def _timed_vote(site, steps):
+    url, fake = site
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.clock.install()
+        page.add_init_script(_TAB_SWITCH)
+        _open_round(page, url)
+        steps(page)
+        page.get_by_role("button", name="Equally good").click()
+        page.get_by_role("button", name="Submit vote").click()
+        _wait_for_votes(page, fake, 1)
+        browser.close()
+    return fake.votes()[0]["p_client"]["timing"]
+
+
+def test_time_in_another_tab_is_not_counted(site):
+    def steps(page):
+        page.clock.run_for(5000)
+        page.evaluate("__setHidden(true)")
+        page.clock.fast_forward("10:00")  # ten minutes in another tab
+        page.evaluate("__setHidden(false)")
+        page.clock.run_for(3000)
+
+    timing = _timed_vote(site, steps)
+    assert timing["away_count"] == 1
+    assert 7 <= timing["visible_s"] <= 12 and 7 <= timing["active_s"] <= 12
+
+
+def test_time_on_screen_without_input_is_active_only_up_to_the_cut_off(site):
+    def steps(page):
+        page.clock.fast_forward("10:00")  # on screen, but nobody touches anything
+
+    timing = _timed_vote(site, steps)
+    assert timing["away_count"] == 0 and timing["idle_cutoff_s"] == 120
+    assert 598 <= timing["visible_s"] <= 610
+    assert 118 <= timing["active_s"] <= 125
+    assert timing["longest_idle_s"] >= 598
+
+
+def test_a_reload_keeps_the_time_already_spent_on_the_pair(site):
+    site[1].resume = True
+
+    def steps(page):
+        page.clock.run_for(5000)
+        page.reload()  # the same pair comes back
+        page.get_by_role("button", name="Visual round").click()
+        expect(page.locator("#card-left .media > *")).to_be_visible()
+        page.clock.run_for(3000)
+
+    timing = _timed_vote(site, steps)
+    assert timing["resumed"] == 1
+    assert 7 <= timing["visible_s"] <= 12
 
 
 def test_designers_can_say_it_in_their_own_words(site):

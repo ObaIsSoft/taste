@@ -81,6 +81,15 @@ Append an entry for every change that deletes or rewrites data.
 - **Vercel.** `main` fast-forwarded to `v2-rebuild` and deployed. The v1 `SUPABASE_KEY` variable was
   removed; the API reads `SUPABASE_SERVICE_KEY`.
 
+### 2026-10-04: active time (migration 0002), no data changed
+
+- **Why.** `seconds_to_vote` is wall-clock time: a tab left open overnight showed as a 12-hour vote.
+  The voting page now sends, with each vote, how long the pair was on screen and in use.
+- **What changed.** `voting_config` gained `idle_cutoff_seconds` (120) and `session_gap_minutes`
+  (30); `voting_facts()` returns the cut-off to the page; `voter_effort`, `vote_attention` and
+  `voter_bias` gained columns at their end. No row was changed or removed.
+- **Votes before it** (Obafemi's first 29) have no timing and show as null in the new columns.
+
 ## Runbooks
 
 ### Cutover from v1 to v2 (one window)
@@ -89,9 +98,9 @@ v1's site breaks the moment its tables are dropped, so these run back to back.
 
 1. **Export v1.** Use the snippet in [Exporting v1](#exporting-v1). Check that the row counts match
    the live tables.
-2. **Apply the schema.** From `taste-engine/`, run
+2. **Apply the schema.** From `taste-engine/`, run each file in `supabase/migrations/` in order:
    `set -a; . ./.env; set +a; psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_v2_voting.sql`,
-   or paste the file into the Supabase SQL editor.
+   then `0002_active_time.sql`, or paste them into the Supabase SQL editor.
 3. **Check and publish the pilot.** Each step runs on every site the same way; there are no
    per-site exceptions:
    - `taste analyze --ids "$(cat manifest/pilot-ids.txt)"`

@@ -15,14 +15,17 @@ Nothing about this is shown to voters while they vote.
 | Data | Recorded in | Written by |
 |---|---|---|
 | Which capture was on which side, and the verdict | `votes.left_capture`, `right_capture`, `outcome` | `cast_vote` |
-| When the pair was served and how long the vote took | `served_pairs.served_at`, `votes.seconds_to_vote` | `next_pair`, `cast_vote` |
+| When the pair was served and how long the vote took (wall-clock) | `served_pairs.served_at`, `votes.seconds_to_vote` | `next_pair`, `cast_vote` |
+| How long the pair was really looked at: seconds on screen (`visible_s`), in front (`focused_s`) and in use (`active_s`, up to `idle_cutoff_seconds` after the last input or a playing reel); times the voter left the page (`away_count`) or switched window (`blur_count`); the longest stretch on screen without input; reloads (`resumed`) | `votes.client.timing` | The voting page, sent with each vote |
 | Whether a reason was asked for | `served_pairs.reason_requested` | `next_pair` |
 | Listed dimensions and the voter's own words | `votes.dimensions`, `votes.own_terms` | `cast_vote` |
 | How the vote was cast: session, position in the session, layout (`tabs`, `stacked`, `side_by_side`), screen size, pixel ratio, touch or mouse | `votes.client` (an open object; new keys need no schema change) | The voting page, sent with each vote |
 | What the voter looked at: phone tab opened, screens scrolled, reels played, live site opened | `vote_events` (`view_*`, `scroll_*`, `play_*`, `open_live_*`) | The voting page, as it happens |
 | The page's language, and whether anything covered it | `captures.description` (`language`, `obstruction`, `page_state`) | `taste describe`, then `taste publish` |
 
-The limits (the size of `client`, the low-effort threshold) live in `voting_config`, and each
+Wall-clock time also counts a tab left open overnight; active time does not. The limits (the
+size of `client`, the low-effort threshold, the idle cut-off, the gap that starts a new sitting)
+live in `voting_config`, and each
 round's vote target in `round_targets`. `voting_facts()` gathers them for `/api/config`, which the
 voting page and the voter guide both read; the dimension definitions come from `dimensions`.
 
@@ -35,7 +38,8 @@ voting page and the voter guide both read; the dimension definitions come from `
 | **Not looking at both sites.** Phones show A first | — | `vote_attention.saw_both`, `voter_bias.saw_both_share` | Votes where B was never opened are dropped or down-weighted |
 | **Hero only.** Judging the first screen and never scrolling | — | `vote_attention.scrolled_both`, `voter_bias.scrolled_both_share` (visual) | A weight by attention; compare models trained with and without these votes |
 | **Motion judged without watching** | — | `vote_attention.played_both`, `voter_bias.played_both_share` (motion) | Motion votes count only when both reels were played |
-| **Fatigue** | Guide: sessions of 20–30 votes; calibration order shuffled per voter | `voter_effort`: early vs late median time, sessions; `client.index` per vote | A weight that falls with position in a long session; or drop votes past a measured point |
+| **Fatigue** | Guide: sessions of 20–30 votes; calibration order shuffled per voter | `voter_effort`: early vs late median active time within sittings (a new sitting starts after `session_gap_minutes` without a vote, whatever the tab); `client.index` per vote | A weight that falls with position in a long sitting; or drop votes past a measured point |
+| **Idle time counted as effort.** A tab left open, a break mid-pair | Guide: breaks are fine, time away is not counted | `vote_attention.active_seconds`, `left_page`; `voter_effort.idle_votes` (wall-clock exceeds active time by more than the cut-off), `left_page_votes`; `voter_bias.left_page_share` | Use active time, never wall-clock, for effort and fatigue; votes cast before timing existed are capped or left out of time-based weights |
 | **Low effort** | Votes under 1 s are refused (`min_vote_seconds`) | `voter_effort.fast_votes` (under `fast_vote_seconds`), `voter_consistency` | Per-voter reliability weights from calibration |
 | **Ties and "can't decide" as an easy way out** | All four outcomes look the same; both may say why (optional) | `voter_bias.tie_share`, `cant_decide_share`; their words and reasons in `votes` | Ties are half-wins; "can't decide" is left out of preference labels, but its words show which trade-off was hard |
 | **Priming by the listed dimensions** | Own words are always offered; suggestions come only from the voter's own past words | `voter_bias.own_words_share` | Themes are found from own words and reasons, not imposed |

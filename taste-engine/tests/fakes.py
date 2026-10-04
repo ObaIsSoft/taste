@@ -55,6 +55,7 @@ class FakeSupabase:
                 "max_dimensions": 3,
                 "max_own_terms": 5,
                 "max_term_chars": 40,
+                "idle_cutoff_seconds": 120,
                 "rounds": {
                     "visual": {"target_votes": 200, "calibration_pairs": 91, "repeats": 10},
                     "motion": {"target_votes": 100, "calibration_pairs": 28, "repeats": 10},

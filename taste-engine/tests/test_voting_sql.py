@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-MIGRATION = Path(__file__).parent.parent / "supabase" / "migrations" / "0001_v2_voting.sql"
+MIGRATIONS = sorted((Path(__file__).parent.parent / "supabase" / "migrations").glob("*.sql"))
 
 pytestmark = pytest.mark.postgres
 
@@ -69,7 +69,8 @@ def db():
         subprocess.run([*admin, "create database taste"], check=True, capture_output=True)
         database = Database(psql, root)
         database.run("create role anon nologin; create role authenticated nologin;")
-        database.file(MIGRATION)
+        for migration in MIGRATIONS:  # in order, as they are applied to the live database
+            database.file(migration)
         database.run(
             """
             insert into sites (id, url, cohort) values
@@ -419,7 +420,47 @@ def test_voting_facts_and_definitions_come_from_one_place(db):
     [[facts]] = db.run("select voting_facts()")
     facts = json.loads(facts)
     assert facts["max_dimensions"] == 3 and facts["min_reason_chars"] == 10
+    assert facts["idle_cutoff_seconds"] == 120  # the voting page counts active time with it
     assert facts["rounds"]["motion"]["target_votes"] == 100
     assert facts["rounds"]["visual"]["target_votes"] == 200
     assert facts["rounds"]["visual"]["calibration_pairs"] >= 3
     assert db.run("select count(*) from dimensions where description = ''") == [["0"]]
+
+
+def test_time_on_screen_is_processed_apart_from_wall_clock_time(db):
+    _add_sites_and_voters(db)
+    db.run("insert into voters (name, invite_code) values ('Hu', 'code-hu')")
+    # served two hours ago, but on screen and in use for 35 s after leaving the page once
+    timed = (
+        '{"timing": {"visible_s": 40.5, "active_s": 35.0, "away_count": 1, "longest_idle_s": 12.0}}'
+    )
+    first = _serve(db, "code-hu", _c(5), _c(6))
+    db.run(
+        f"update served_pairs set served_at = now() - interval '2 hours' "
+        f"where token = '{first['token']}'"
+    )
+    db.run(
+        f"select cast_vote('code-hu', '{first['token']}', 'left', '{{whitespace}}', "
+        f"'a calmer grid', '{{}}', '{timed}')"
+    )
+    assert db.run(
+        f"select visible_seconds, active_seconds, away_count, left_page from vote_attention "
+        f"where token = '{first['token']}'"
+    ) == [["40.5", "35.0", "1", "t"]]
+    # a vote from before the page measured time has none, and is left out of active medians
+    second = _serve(db, "code-hu", _c(7), _c(8))
+    db.run(
+        f"select cast_vote('code-hu', '{second['token']}', 'equally_good', '{{}}', null, "
+        f"'{{}}', '{{}}')"
+    )
+    # the first vote was cast a day earlier: the two are separate sittings
+    db.run(
+        f"update votes set created_at = now() - interval '1 day' where token = '{first['token']}'"
+    )
+    assert db.run(
+        "select votes, timed_votes, median_active_seconds, sittings, sessions, left_page_votes, "
+        "idle_votes from voter_effort where voter = 'Hu' and round = 'visual'"
+    ) == [["2", "1", "35.0", "2", "0", "1", "1"]]  # no page session ids here, so 0 sessions
+    assert db.run(
+        "select left_page_share from voter_bias where voter = 'Hu' and round = 'visual'"
+    ) == [["1.000"]]
