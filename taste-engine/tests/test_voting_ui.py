@@ -296,6 +296,49 @@ def test_a_pasted_invite_link_works_as_the_code(site):
         browser.close()
 
 
+def test_another_invite_link_in_the_same_tab_switches_voter(site):
+    url, fake = site
+    fake.tables["voters"].append({"name": "Bo", "invite_code": "code-bo"})
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.goto(f"{url}/#invite=code-ada")
+        expect(page.get_by_role("heading", name="Hi Ada. Choose a round.")).to_be_visible()
+        page.get_by_role("button", name="Visual round").click()
+        expect(page.locator("#who")).to_have_text("Ada")
+        page.get_by_role("button", name="Equally good").click()
+        page.get_by_role("button", name="Submit vote").click()
+        _wait_for_votes(page, fake, 1)
+
+        page.goto(f"{url}/#invite=code-bo")  # only the part after # changes: no reload
+        expect(page.get_by_role("heading", name="Hi Bo. Choose a round.")).to_be_visible()
+        expect(page.locator("#rounds")).to_contain_text("Not Bo?")
+        page.get_by_role("button", name="Visual round").click()
+        expect(page.locator("#who")).to_have_text("Bo")
+        page.get_by_role("button", name="Equally good").click()
+        page.get_by_role("button", name="Submit vote").click()
+        _wait_for_votes(page, fake, 2)
+
+        ada, bo = fake.votes()
+        assert (ada["p_code"], bo["p_code"]) == ("code-ada", "code-bo")
+        assert ada["p_client"]["session"] != bo["p_client"]["session"]  # never one shared session
+        assert bo["p_client"]["index"] == 1
+        browser.close()
+
+
+def test_someone_else_can_sign_out_from_the_round_choice(site):
+    url, _fake = site
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{url}/#invite=code-ada")
+        expect(page.locator("#rounds")).to_contain_text("Not Ada?")
+        page.locator("#rounds").get_by_role("button", name="Sign out").click()
+        expect(page.get_by_label("Invite code")).to_be_visible()
+        assert page.evaluate("localStorage.getItem('taste.inviteCode')") is None
+        browser.close()
+
+
 def test_designers_can_say_it_in_their_own_words(site):
     url, fake = site
     fake.rpc_results["voter_terms"] = [{"term": "editorial pacing", "uses": 3}]

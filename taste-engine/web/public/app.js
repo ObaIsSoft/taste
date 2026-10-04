@@ -25,13 +25,16 @@ const PLACEHOLDERS = {
 
 const state = {
   code: null, name: null, config: null, round: null, pair: null, pick: null, chips: new Set(), terms: [],
-  busy: false, cast: 0,
+  busy: false, cast: 0, session: null,
 };
 
-// One id per visit to the page, and the position of each vote within it: the database uses them
-// to see fatigue (late votes in a long session) and whether two rounds were judged together.
-const SESSION = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
-  : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+// One id per sign-in, and the position of each vote within it: the database uses them to see
+// fatigue (late votes in a long session) and whether two rounds were judged together. A new
+// voter in the same tab starts a new session, so two people never share one.
+function newSession() {
+  return (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 // How this vote was seen: one site at a time on a phone, stacked, or side by side.
 function layout() {
@@ -43,7 +46,7 @@ function layout() {
 
 function clientDetails() {
   return {
-    session: SESSION,
+    session: state.session,
     index: state.cast + 1,
     layout: layout(),
     viewport_width: window.innerWidth,
@@ -80,6 +83,7 @@ function show(id) {
   for (const section of ['sign-in', 'rounds', 'voting', 'done']) $(`#${section}`).hidden = section !== id;
   const signedIn = id !== 'sign-in';
   $('#menu').hidden = !signedIn;
+  $('#who').hidden = !signedIn;
   $('#menu').open = false;
   $('#guide-link').hidden = signedIn;
   $('#round-name').hidden = id !== 'voting';
@@ -128,13 +132,16 @@ async function signIn(code) {
   state.code = code;
   try {
     const session = await api('/api/session', { method: 'POST' });
-    state.config = await api('/api/config');
-    state.name = session.name;
+    const config = await api('/api/config');
+    if (state.code !== code) return;  // another invite link was opened meanwhile
+    Object.assign(state, { config, name: session.name, session: newSession(), cast: 0 });
     saved.set(code);
     $('#greeting').textContent = `Hi ${session.name}. Choose a round.`;
+    for (const spot of $$('.voter-name')) spot.textContent = session.name;
     renderProgress(session.progress);
     show('rounds');
   } catch (error) {
+    if (state.code !== code) return;
     state.code = null;
     saved.clear();
     $('#sign-in-message').textContent = error.status === 401 ? 'That invite code is not valid.' : error.message;
@@ -142,9 +149,18 @@ async function signIn(code) {
   }
 }
 
-function signOut() {
+// Drop everything about the signed-in voter, including a pair or reel still on screen.
+function forget() {
   saved.clear();
-  Object.assign(state, { code: null, name: null, config: null, round: null, pair: null, pick: null });
+  Object.assign(state, {
+    code: null, name: null, config: null, round: null, pair: null, pick: null, session: null, cast: 0,
+  });
+  for (const media of $$('.media')) media.replaceChildren();
+  for (const spot of $$('.voter-name')) spot.textContent = '';
+}
+
+function signOut() {
+  forget();
   $('#invite').value = '';
   show('sign-in');
 }
@@ -320,8 +336,10 @@ function pick(outcome) {
 async function loadPair() {
   setBusy(true);
   for (const media of $$('.media')) media.classList.add('is-loading');
+  const { code, round } = state;
   try {
-    const pair = await api(`/api/pair?round=${state.round}`);
+    const pair = await api(`/api/pair?round=${round}`);
+    if (state.code !== code || state.round !== round) return;  // signed out or switched meanwhile
     state.pair = pair;
     for (const side of SIDES) renderSide(side, pair[side]);
     resetDecision();
@@ -438,6 +456,15 @@ function inviteFromLink() {
   try { return decodeURIComponent(match[1]).trim() || null; } catch (error) { return null; }
 }
 
+// Opening another invite link in the same tab changes only the part after #, and the browser
+// does not reload the page for that: switch to the new voter, or the last one stays signed in.
+function onLinkChange() {
+  const code = inviteFromLink();
+  if (!code || code === state.code) return;
+  forget();
+  signIn(code);
+}
+
 // Voters paste the whole invite link as often as the code: take the code from either.
 function inviteCode(text) {
   const match = text.match(/[#?&]invite=([^&\s]+)/);
@@ -450,7 +477,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const code = inviteCode($('#invite').value);
     if (code) signIn(code);
   });
-  $('#sign-out').addEventListener('click', signOut);
+  for (const button of $$('.sign-out')) button.addEventListener('click', signOut);
+  window.addEventListener('hashchange', onLinkChange);
   $('.wordmark').addEventListener('click', (event) => {
     if (!state.code) return;
     event.preventDefault();

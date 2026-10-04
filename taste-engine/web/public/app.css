@@ -223,8 +223,18 @@ kbd { display: none; }
   text-decoration: none;
 }
 
+.menu-list > .menu-who {
+  min-height: 32px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+}
+
 @media (hover: hover) {
   .menu-list > :hover { background: var(--fill); }
+  .menu-list > .menu-who:hover { background: none; }
 }
 
 /* Sign in, rounds and the end screen */

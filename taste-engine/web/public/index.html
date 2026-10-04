@@ -13,6 +13,7 @@
 <header class="topbar">
   <div class="crumbs">
     <a class="wordmark" href="/">TASTE</a>
+    <span id="who" class="crumb voter-name" hidden></span>
     <span id="round-name" class="crumb" hidden></span>
   </div>
   <div class="status">
@@ -24,9 +25,10 @@
     <details id="menu" class="menu" hidden>
       <summary>Menu</summary>
       <div class="menu-list">
+        <p class="menu-who">Signed in as&nbsp;<strong class="voter-name"></strong></p>
         <button type="button" class="change-round">Change round</button>
         <a href="/guide.html" target="_blank" rel="noopener">Voter guide</a>
-        <button type="button" id="sign-out">Sign out</button>
+        <button type="button" class="sign-out">Sign out</button>
       </div>
     </details>
   </div>
@@ -64,6 +66,8 @@
         <span class="round-progress" data-round="motion"></span>
       </button>
     </div>
+    <p class="fine">Not <span class="voter-name"></span>?
+      <button type="button" class="text sign-out">Sign out</button></p>
   </section>
 
   <section id="voting" class="voting" hidden>
