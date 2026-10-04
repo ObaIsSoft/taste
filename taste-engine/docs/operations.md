@@ -89,6 +89,9 @@ Append an entry for every change that deletes or rewrites data.
   (30); `voting_facts()` returns the cut-off to the page; `voter_effort`, `vote_attention` and
   `voter_bias` gained columns at their end. No row was changed or removed.
 - **Votes before it** (Obafemi's first 29) have no timing and show as null in the new columns.
+- **Checked live.** Rehearsed with a rollback first, then applied. A `smoke-test` voter cast one
+  vote with 5 s in another tab (wall-clock 12.4 s, on screen 6.2 s, left the page once); its 1
+  vote, 1 served pair and the voter were then deleted with the runbook SQL.
 
 ## Runbooks
 
