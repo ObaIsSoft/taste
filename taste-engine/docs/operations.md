@@ -88,10 +88,25 @@ Append an entry for every change that deletes or rewrites data.
 - **What changed.** `voting_config` gained `idle_cutoff_seconds` (120) and `session_gap_minutes`
   (30); `voting_facts()` returns the cut-off to the page; `voter_effort`, `vote_attention` and
   `voter_bias` gained columns at their end. No row was changed or removed.
-- **Votes before it** (Obafemi's first 29) have no timing and show as null in the new columns.
+- **Votes before it** (Obafemi's first 29) had no timing; see the next entry.
 - **Checked live.** Rehearsed with a rollback first, then applied. A `smoke-test` voter cast one
   vote with 5 s in another tab (wall-clock 12.4 s, on screen 6.2 s, left the page once); its 1
   vote, 1 served pair and the voter were then deleted with the runbook SQL.
+
+### 2026-10-04: active time for the votes cast before it was measured
+
+- **Why.** Obafemi's first 29 votes predate migration 0002 and had no `client.timing`. At Obafemi's
+  request their wall-clock time stands as their active time, except one vote cast after its tab
+  was left open overnight.
+- **What changed.** `votes.client` gained a `timing` object on those 29 votes, nothing else:
+  - 28 votes (ids 9–37 except 23): `active_s`, `focused_s` and `visible_s` set to their
+    `seconds_to_vote`, with `"source": "wall_clock"` so analysis can tell them from measured time.
+    They have no `away_count`, so whether the voter left the page is unknown (null).
+  - Vote 23 (44,712 s, 12.4 hours): `"source": "none"` and a note; no active time.
+- **Backed up first** to `data/votes/backup-2026-10-04-before-timing-backfill.json` (git-ignored;
+  each vote's `client` as it was).
+- **To undo,** remove the key: `update votes set client = client - 'timing'
+  where client -> 'timing' ->> 'source' in ('wall_clock', 'none');`
 
 ## Runbooks
 
