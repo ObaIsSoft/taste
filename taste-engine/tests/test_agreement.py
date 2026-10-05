@@ -107,6 +107,11 @@ def test_summary_counts_agreement_and_differences():
                 "flipped": 1,
             }
         ],
+        "capture_reports": [
+            {"status": "pending"},
+            {"status": "removed"},
+            {"status": "dismissed"},
+        ],
         "round_differences": [
             {"differs": True, "opposite": True},
             {"differs": True, "opposite": False},
@@ -127,6 +132,8 @@ def test_summary_counts_agreement_and_differences():
         "  Ada on repeats: same verdict on 9 of 10, flipped on 1",
         "Motion round",
         "  panel: no pair judged by 2 or more voters yet",
+        "Reports to review: 2 (1 on calibration sites, still in the pool; 1 taken out at once). "
+        "Run: taste reports",
         "Visual against motion, same voter and pair: verdict differs on 2 of 3, opposite on 1",
     ]
 

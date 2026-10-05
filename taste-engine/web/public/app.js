@@ -514,7 +514,7 @@ async function submitVote(outcome) {
 function report(outcome) {
   const letter = outcome === 'broken_left' ? 'A' : 'B';
   const question = `Report site ${letter} as broken (blank, an error, a cookie wall or the wrong site)? `
-    + 'It will be taken out for checking.';
+    + 'It will be checked, and you will not be shown it again meanwhile.';
   if (window.confirm(question)) submitVote(outcome);
 }
 

@@ -939,8 +939,21 @@ making sure what voting records is trustworthy, and into the questions the first
   showings to 2, and back-to-back repeats from over 20 to none. It should have been built that way
   from the start: an order that "averages out by the end" still tires people on the way there.
 
-**Lesson.** Scan everything a commit has ever held, not just today's files, before publishing a
-repository. A `.env` committed once is in history for good until history is rewritten, and its keys
+- **One report, everyone's calibration.** Leonardo, voting on a phone, reported the dark,
+  scroll-animated Genesis site as broken 13 seconds into the pair, and the visual calibration set
+  fell from 14 sites to 13 for every voter. The site was reinstated, and reports now work
+  differently (migration 0006):
+  - **On a calibration site:** the report waits for the operator, the site stays for everyone
+    else, and only the reporter stops seeing it.
+  - **On any other site:** the report still takes it out at once, and is logged so it can be
+    undone.
+
+  The guide now says a dark or sparse design is not broken.
+
+**Lessons.**
+- Scan everything a commit has ever held, not just today's files, before publishing a
+  repository.
+- No single voter's action should change what every other voter is asked to judge. A `.env` committed once is in history for good until history is rewritten, and its keys
 are leaked until they are replaced.
 
 ## Lessons From v1 (kept from retired notes)

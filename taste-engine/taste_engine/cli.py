@@ -201,6 +201,35 @@ def _cmd_voters_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_reports_list(args: argparse.Namespace) -> int:
+    reports = db.list_reports(db.connect(get_settings()), every=args.all)
+    for r in reports:
+        url = (r.get("captures") or {}).get("sites", {}).get("url", "")
+        state = {
+            "pending": "waiting: a calibration site, still shown to everyone but the reporter",
+            "removed": "taken out at once: not a calibration site",
+        }.get(r["status"], f"{r['status']} {str(r['decided_at'])[:16]}")
+        print(
+            f"#{r['id']} {r['capture_id']} {url} reported by {r['voters']['name']} "
+            f"{str(r['reported_at'])[:16]}: {state}" + (f" ({r['note']})" if r["note"] else "")
+        )
+    if not reports:
+        print("no reports waiting" if not args.all else "no reports yet")
+    elif not args.all:
+        print("decide each: taste reports uphold ID, or taste reports dismiss ID")
+    return 0
+
+
+def _cmd_reports_decide(args: argparse.Namespace) -> int:
+    report = db.decide_report(db.connect(get_settings()), args.report_id, args.decision, args.note)
+    effect = {"upheld": "taken out of the pool for everyone", "dismissed": "kept in the pool"}
+    print(
+        f"#{report['id']} {report['capture_id']}: {report['status']}, "
+        f"{effect.get(report['status'], '')}"
+    )
+    return 0
+
+
 def _cmd_votes_agreement(args: argparse.Namespace) -> int:
     for line in agreement.summary(agreement.fetch(db.connect(get_settings()))):
         print(line)
@@ -297,6 +326,19 @@ def build_parser() -> argparse.ArgumentParser:
     exclude.add_argument("capture_ids", nargs="+", metavar="capture_id", help="e.g. 0234-original")
     exclude.add_argument("--reason", required=True, help="recorded in the capture's qa_note")
     exclude.set_defaults(func=_cmd_captures_exclude)
+
+    reports = commands.add_parser("reports", help="voters' broken reports, to review")
+    reports.add_argument("--all", action="store_true", help="include decided reports")
+    reports.set_defaults(func=_cmd_reports_list)
+    reports_sub = reports.add_subparsers(dest="action")
+    for decision, text in (
+        ("uphold", "the capture is broken: take it out of the pool for everyone"),
+        ("dismiss", "the capture is fine: keep it, or put it back"),
+    ):
+        decide = reports_sub.add_parser(decision, help=text)
+        decide.add_argument("report_id", type=int)
+        decide.add_argument("--note", help="why, kept with the report")
+        decide.set_defaults(func=_cmd_reports_decide, decision=decision)
 
     votes = commands.add_parser("votes", help="work with collected votes")
     votes_sub = votes.add_subparsers(dest="action", required=True)

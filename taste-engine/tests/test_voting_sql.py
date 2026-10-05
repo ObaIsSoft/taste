@@ -183,12 +183,80 @@ def test_vote_rules_are_enforced_by_the_database(db):
     )
 
 
-def test_a_broken_report_pulls_the_capture_from_the_pool(db):
-    pair = _next(db, code="code-bo")
-    _vote(db, pair, outcome="broken_left", dims="{}", reason="", code="code-bo")
-    [[in_pool, note]] = db.run(f"select in_pool, qa_note from captures where id = '{pair['left']}'")
-    assert in_pool == "f" and note == "reported broken by a voter"
-    db.run(f"update captures set in_pool = true, qa_note = null where id = '{pair['left']}'")
+def test_a_report_on_a_calibration_site_waits_for_review(db):
+    db.run("insert into voters (name, invite_code) values ('Lu', 'code-lu'), ('Mo', 'code-mo')")
+    try:
+        pair = _next(db, code="code-lu")
+        assert pair["source"] == "calibration"
+        reported = pair["left"]
+        _vote(db, pair, outcome="broken_left", dims="{}", reason="", code="code-lu")
+        # still in the pool for everyone: the calibration set is unchanged
+        assert db.run(f"select in_pool from captures where id = '{reported}'") == [["t"]]
+        assert db.run("select count(*) from open_calibration_pairs where round = 'visual'") == [
+            ["3"]
+        ]
+        [[report, status]] = db.run(
+            "select r.id, r.status from capture_reports r join voters v on v.id = r.voter_id "
+            "where v.name = 'Lu'"
+        )
+        assert status == "pending"
+        # but the voter who reported it is not shown it again while it waits
+        for _ in range(2):
+            later = _next(db, code="code-lu")
+            assert reported not in (later["left"], later["right"]), later
+            _vote(db, later, outcome="equally_good", dims="{}", reason="", code="code-lu")
+        # dismissed: it stays, and the reporter will see it again
+        assert db.run(f"select status from review_report({report}, 'dismiss', 'fine')") == [
+            ["dismissed"]
+        ]
+        assert db.run(
+            f"select reported_by(v.id, '{reported}') from voters v where v.name = 'Lu'"
+        ) == [["f"]]
+        assert "23505" in db.error(f"select review_report({report}, 'uphold')")  # decided once
+
+        # upheld: out of the pool for everyone, and kept out on later publishes
+        again = _serve(db, "code-mo", _c(1), _c(2))
+        _vote(db, again, outcome="broken_left", dims="{}", reason="", code="code-mo")
+        [[second]] = db.run("select max(id) from capture_reports")
+        assert db.run(f"select status from review_report({second}, 'uphold')") == [["upheld"]]
+        assert db.run(f"select in_pool, qa_note from captures where id = '{_c(1)}'") == [
+            ["f", "reported broken by a voter; upheld on review"]
+        ]
+    finally:
+        db.run(
+            "delete from capture_reports; "
+            "delete from votes where voter_id in "
+            "(select id from voters where name in ('Lu', 'Mo'));"
+            "delete from served_pairs where voter_id in "
+            "(select id from voters where name in ('Lu', 'Mo'));"
+            "delete from voters where name in ('Lu', 'Mo');"
+            f"update captures set in_pool = true, qa_note = null where id = '{_c(1)}'"
+        )
+
+
+def test_a_report_on_another_site_takes_it_out_at_once(db):
+    _add_sites_and_voters(db)
+    db.run("insert into voters (name, invite_code) values ('Ny', 'code-ny')")
+    try:
+        pair = _serve(db, "code-ny", _c(5), _c(6))  # not calibration sites
+        _vote(db, pair, outcome="broken_right", dims="{}", reason="", code="code-ny")
+        assert db.run(f"select in_pool, qa_note from captures where id = '{_c(6)}'") == [
+            ["f", "reported broken by a voter"]
+        ]
+        [[report, status]] = db.run("select id, status from capture_reports")
+        assert status == "removed"
+        assert "22023" in db.error(f"select review_report({report}, 'keep')")
+        # dismissed: a wrong removal is undone
+        db.run(f"select review_report({report}, 'dismiss', 'a dark design, not broken')")
+        assert db.run(f"select in_pool, qa_note from captures where id = '{_c(6)}'") == [["t", ""]]
+    finally:
+        db.run(
+            "delete from capture_reports; "
+            "delete from votes where voter_id = (select id from voters where name = 'Ny');"
+            "delete from served_pairs where voter_id = (select id from voters where name = 'Ny');"
+            "delete from voters where name = 'Ny';"
+            f"update captures set in_pool = true, qa_note = null where id = '{_c(6)}'"
+        )
 
 
 def test_motion_rounds_use_motion_dimensions(db):

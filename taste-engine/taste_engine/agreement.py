@@ -22,6 +22,7 @@ VIEWS = {
     "language_bias": ("round", "language"),
     "voter_agreement": ("round", "voter_a_id", "voter_b_id"),
     "round_differences": ("voter_id", "pair_low", "pair_high"),
+    "capture_reports": ("id",),
 }
 
 
@@ -101,6 +102,13 @@ def summary(views: dict[str, list[dict[str, Any]]]) -> list[str]:
                     f"  {row['voter']} on repeats: same verdict on {row['same_verdict']} of "
                     f"{row['repeated_pairs']}, flipped on {row['flipped']}"
                 )
+    waiting = [r for r in views.get("capture_reports", []) if r["status"] in ("pending", "removed")]
+    if waiting:
+        pending = sum(1 for r in waiting if r["status"] == "pending")
+        lines.append(
+            f"Reports to review: {len(waiting)} ({pending} on calibration sites, still in the "
+            f"pool; {len(waiting) - pending} taken out at once). Run: taste reports"
+        )
     differences = views["round_differences"]
     differ = sum(1 for d in differences if d["differs"])
     opposite = sum(1 for d in differences if d["opposite"])

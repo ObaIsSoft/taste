@@ -186,6 +186,19 @@ Append an entry for every change that deletes or rewrites data.
   counts as done for Leonardo, so that one calibration pair has no verdict from them.
 - **The weakness.** A single report changes the calibration set for every voter at once.
 
+### 2026-10-05: reports on calibration sites go to review (migration 0006, no data changed)
+
+- **Why.** One report from one voter had changed the calibration set for everyone (the entry
+  above).
+- **What changed.**
+  - **A new `capture_reports` table:** every broken report since.
+  - **On a calibration site,** a report waits for review (`pending`): the site stays in the pool,
+    and only the reporter stops seeing it until it is decided.
+  - **On any other site,** a report still takes it out at once (`removed`), and can be undone.
+  - **`review_report`** upholds or dismisses a report; the `taste reports` command drives it.
+- **Logged after the fact.** Leonardo's earlier report (vote 72, unchanged) was entered as report 1,
+  dismissed at 21:48 UTC, the time 348 was reinstated.
+
 ## Runbooks
 
 ### Cutover from v1 to v2 (one window)
@@ -198,7 +211,7 @@ v1's site breaks the moment its tables are dropped, so these run back to back.
    `set -a; . ./.env; set +a; psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_v2_voting.sql`,
    then `0002_active_time.sql` and `0003_pinned_media.sql`, or paste them into the Supabase SQL
    editor. `0004_require_pinned_media.sql` comes after the first publish (step 3), then
-   `0005_balanced_calibration_order.sql`.
+   `0005_balanced_calibration_order.sql` and `0006_reports_for_review.sql`.
 3. **Check and publish the pilot.** Each step runs on every site the same way; there are no
    per-site exceptions:
    - `taste analyze --ids "$(cat manifest/pilot-ids.txt)"`
@@ -262,6 +275,9 @@ delete from voters where name = 'smoke-test';
 
 ### During voting
 
+- **Daily:** `taste reports` lists voters' broken reports waiting for you (`taste votes agreement`
+  also flags them). Look at the capture, then `taste reports uphold ID` (broken: out for everyone)
+  or `taste reports dismiss ID` (fine: kept, or put back), with `--note` for why.
 - **Daily:** `taste votes agreement`. Watch these:
   - panel agreement on calibration pairs;
   - each designer's consistency on repeats;

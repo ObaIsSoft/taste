@@ -274,6 +274,9 @@ are answered in order, and each can stop the project or change it:
   badly" is two clean verdicts rather than one muddled one.
 - **Pairwise votes.** A is better, B is better, equally good, or can't decide; or report a broken
   capture. Choosing between two is easier and more consistent than scoring one.
+- **Reports.** A report on a calibration site goes to the operator for review; the site stays for
+  everyone else, and only the reporter stops seeing it until it is decided. A report on any other
+  site takes it out at once, and is logged so a wrong removal can be undone.
 - **What decided it.**
   - **Listed dimensions:** up to three, from six per round, each with a definition the voter
     can read.

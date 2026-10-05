@@ -265,6 +265,31 @@ def pool_ids(db: Client) -> set[str]:
             return set(ids)
 
 
+def list_reports(db: Client, every: bool = False) -> list[dict[str, Any]]:
+    """Voters' "broken" reports, oldest first: only those waiting for a decision, unless every.
+    A pending report is on a calibration site, which stays in the pool until decided; a removed
+    one took its site out at once."""
+    query = (
+        db.table("capture_reports")
+        .select(
+            "id,capture_id,status,reported_at,decided_at,note,voters(name),captures(sites(url))"
+        )
+        .order("id")
+    )
+    if not every:
+        query = query.in_("status", ["pending", "removed"])
+    return query.execute().data
+
+
+def decide_report(db: Client, report_id: int, decision: str, note: str | None) -> dict[str, Any]:
+    """Uphold (take the capture out for everyone) or dismiss (keep it, or put it back) a report."""
+    return (
+        db.rpc("review_report", {"p_report": report_id, "p_decision": decision, "p_note": note})
+        .execute()
+        .data
+    )
+
+
 def disable_voter(db: Client, name: str) -> int:
     """Switch a voter off: their invite code stops working, their votes stay. Returns how many."""
     return len(db.table("voters").update({"active": False}).eq("name", name).execute().data)
