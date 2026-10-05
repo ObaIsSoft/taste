@@ -158,6 +158,21 @@ Append an entry for every change that deletes or rewrites data.
   ids, until GitHub Support purges them. The keys in them are dead; the site list and the v1
   media are not secret, but are kept out of the repository.
 
+### 2026-10-05: calibration in a balanced order (migration 0005, no data changed)
+
+- **Why.** Calibration pairs came in a random order per voter, and random is not even. After 43
+  votes Obafemi had seen Oxide 10 times and Permian twice, and sites often came up in back-to-back
+  pairs: a source of fatigue.
+- **What changed.** `next_pair` now serves the calibration pair whose sites the voter has seen
+  least, avoiding a site from their previous pair. The set of pairs is unchanged, so votes before
+  and after stay comparable. In a simulation of four voters, the worst gap between the most- and
+  least-shown site fell from 7–8 to 2, and back-to-back repeats from 20–27 per voter to none.
+- **Checked.** Rehearsed with a rollback, applied, then a temporary voter's four live pairs showed
+  eight different sites; that voter was deleted.
+- **Votes before it.** Obafemi's first 43 and Michelangelo's first 6 calibration votes followed the
+  random order. Their remaining pairs now come in the balanced order, which evens out their
+  exposure as far as the pairs left allow.
+
 ## Runbooks
 
 ### Cutover from v1 to v2 (one window)
@@ -169,7 +184,8 @@ v1's site breaks the moment its tables are dropped, so these run back to back.
 2. **Apply the schema.** From `taste-engine/`, run each file in `supabase/migrations/` in order:
    `set -a; . ./.env; set +a; psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/0001_v2_voting.sql`,
    then `0002_active_time.sql` and `0003_pinned_media.sql`, or paste them into the Supabase SQL
-   editor. `0004_require_pinned_media.sql` comes after the first publish (step 3).
+   editor. `0004_require_pinned_media.sql` comes after the first publish (step 3), then
+   `0005_balanced_calibration_order.sql`.
 3. **Check and publish the pilot.** Each step runs on every site the same way; there are no
    per-site exceptions:
    - `taste analyze --ids "$(cat manifest/pilot-ids.txt)"`

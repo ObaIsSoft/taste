@@ -284,7 +284,9 @@ are answered in order, and each can stop the project or change it:
 - **Which pair comes next.** The first of these that applies:
   1. an unanswered pair served in the last hour;
   2. the next calibration pair: all pairs among 14 visual and 8 motion sites, chosen as the most
-     varied by measured features, judged by every designer in their own shuffled order;
+     varied by measured features, judged by every designer. The next one is always the pair whose
+     sites that designer has seen least, never repeating a site from the previous pair, so every
+     stretch of votes shows the sites evenly;
   3. 10 calibration pairs again, sides swapped, to measure each designer's consistency;
   4. 10% of the time, a pair another designer judged, to keep measuring agreement;
   5. otherwise, the least-compared site against a random site this voter hasn't paired it with.
@@ -348,7 +350,7 @@ vote; `taste votes agreement` prints every view named below.
 | **Not looking at both sites.** Phones show A first | — | `vote_attention.saw_both`, `voter_bias.saw_both_share` | Votes where B was never opened dropped or down-weighted |
 | **Hero only.** Never scrolling past the first screen | — | `vote_attention.scrolled_both` (visual) | A weight by attention; models compared with and without these votes |
 | **Motion judged without watching** | — | `vote_attention.played_both` (motion) | Motion votes count only when both reels were played |
-| **Fatigue** | Guide: sessions of 20–30 votes; calibration order shuffled per voter | `voter_effort`: early vs late median active time within sittings (a new sitting starts after 30 minutes without a vote) | A weight that falls with position in a long sitting |
+| **Fatigue** | Guide: sessions of 20–30 votes; calibration in a balanced order (sites shown evenly, no site in back-to-back pairs) | `voter_effort`: early vs late median active time within sittings (a new sitting starts after 30 minutes without a vote) | A weight that falls with position in a long sitting |
 | **Idle time counted as effort.** A tab left open, a break mid-pair | Guide: breaks are fine, time away is not counted | `vote_attention.active_seconds`, `left_page`; `voter_effort.idle_votes`, `left_page_votes` | Active time, never wall-clock time, for effort and fatigue |
 | **Low effort** | Votes under 1 second are refused | `voter_effort.fast_votes`, `voter_consistency` | Per-voter reliability weights from calibration |
 | **Ties and "can't decide" as an easy way out** | All four outcomes look the same | `voter_bias.tie_share`, `cant_decide_share`, with their words | Ties as half-wins; "can't decide" left out of preference labels |

@@ -931,6 +931,14 @@ making sure what voting records is trustworthy, and into the questions the first
   - **The other keys:** the access token revoked, the Google key deleted, the database password
     reset.
 
+- **Calibration in a balanced order.** Obafemi noticed the calibration round felt like ten sites,
+  not fourteen. The data agreed: after 43 votes one site had appeared 10 times and another twice,
+  because each voter's pairs came in a random order. Now the next pair is the one whose sites the
+  voter has seen least, never repeating a site from the previous pair (migration 0005). The
+  pairs are the same; only the order changed. In simulation the worst imbalance fell from 7–8
+  showings to 2, and back-to-back repeats from over 20 to none. It should have been built that way
+  from the start: an order that "averages out by the end" still tires people on the way there.
+
 **Lesson.** Scan everything a commit has ever held, not just today's files, before publishing a
 repository. A `.env` committed once is in history for good until history is rewritten, and its keys
 are leaked until they are replaced.

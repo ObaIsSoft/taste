@@ -523,3 +523,40 @@ def test_a_capture_without_published_media_is_never_shown(db):
     assert db.run("select servable(c, 'visual') from captures c where id = '0009-original'") == [
         ["f"]
     ]
+
+
+def test_calibration_shows_every_site_evenly(db):
+    """Calibration order is balanced, not random: after every second vote on a four-site set,
+    each site has been shown equally often, and every pair is judged exactly once."""
+    _add_sites_and_voters(db)
+    sites = [_c(i) for i in (5, 6, 7, 8)]
+    # set the other tests' motion calibration pairs aside, so this voter sees only these four sites
+    db.run(
+        "create table stashed_pairs as select * from calibration_pairs where round = 'motion';"
+        "delete from calibration_pairs where round = 'motion';"
+        "insert into voters (name, invite_code) values ('Jo', 'code-jo') on conflict do nothing;"
+        "insert into calibration_pairs (round, capture_a, capture_b) values "
+        + ",".join(f"('motion', '{a}', '{b}')" for i, a in enumerate(sites) for b in sites[i + 1 :])
+    )
+    try:
+        shown = dict.fromkeys(sites, 0)
+        judged = []
+        for vote in range(1, 7):
+            pair = _next(db, code="code-jo", round_kind="motion")
+            assert pair["source"] == "calibration"
+            db.run(f"select cast_vote('code-jo', '{pair['token']}', 'equally_good', '{{}}', null)")
+            judged.append(frozenset((pair["left"], pair["right"])))
+            shown[pair["left"]] += 1
+            shown[pair["right"]] += 1
+            if vote % 2 == 0:
+                assert len(set(shown.values())) == 1, shown  # every site shown equally often
+        assert len(set(judged)) == 6
+    finally:
+        db.run(
+            "delete from votes where voter_id = (select id from voters where name = 'Jo');"
+            "delete from served_pairs where voter_id = (select id from voters where name = 'Jo');"
+            "delete from voters where name = 'Jo';"
+            "delete from calibration_pairs where round = 'motion';"
+            "insert into calibration_pairs select * from stashed_pairs;"
+            "drop table stashed_pairs;"
+        )
