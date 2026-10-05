@@ -1,15 +1,16 @@
 # AI Design Taste Engine: Idea Brief & Technical Specification
 
-**Document Version:** 1.1 (sections 9–11 updated for the v2 build)  
+**Document Version:** 1.2 (sections 8.6 and 9–11 describe v2)  
 **Date:** August 2026, updated October 2026  
 **Classification:** Internal Concept Document  
 **Author:** Concept Synthesis  
 
-> **Status, October 2026.** Sections 1–8 and 12–16 are the original concept. Sections 9–11 now
-> describe what v2 actually is. The first approach (fine-tuning a vision-language model to be the
-> judge) failed for reasons recorded in `taste_engine_journal.md`. v2 judges from pixels and
-> measurements and uses language only to explain. What was built and why is in
-> `taste-engine/docs/v2-build-log.md`, and how to run it live is in `taste-engine/docs/operations.md`.
+> **Status, October 2026.** Sections 1–8 and 12–16 are the original concept; section 8.6 adds the
+> method alternatives considered for v2. Sections 9–11 describe v2 as built and running: the
+> architecture, the method, the data, how each bias is handled, and the known limits. The first
+> approach (fine-tuning a vision-language model to be the judge) failed for reasons recorded in
+> `taste_engine_journal.md`, which also records, by date, what happened and why.
+> `taste-engine/docs/operations.md` holds the runbooks and the database history.
 
 ---
 
@@ -178,13 +179,34 @@ Teach design theory via AI tutor.
 ### 8.5 Selected Approach: Taste Engine + Workflow Integration
 Focus on **reference deconstruction** and **system generation** as a copilot within existing tools (Figma, Chrome). This is defensible, monetizable, and technically feasible.
 
+### 8.6 Method Alternatives (v2)
+How to learn taste, rather than which product to build. Each was considered; the right column says
+why it was not chosen, or when it could return.
+
+| Alternative | Why not, or not yet |
+|---|---|
+| **Language models judging from text** (v1: page summaries in, verdicts out) | Text cannot carry visual craft. v1's verdicts were invented, and 29% were not valid JSON |
+| **Fine-tuning a vision-language model as the judge** (v1: SFT, then MADPO) | Failed on inputs, labels and testing, with far too few labels. It may return later to write critiques, not to judge |
+| **A language model as the only judge** | It cannot stand in for the panel's taste, and it leans toward one side. Kept as the baseline to beat: blind, in both orders |
+| **Rating each site from 1 to 10** | Scales drift between people and over time, and ratings bunch in the middle. Choosing between two is easier and more consistent |
+| **One rater** (v1: 620 votes from one person) | Taste cannot be told from noise without agreement, and agreement needs several raters |
+| **Crowd raters instead of designers** | They measure first-impression appeal, where simple, typical sites win, not craft. Possible later as a contrast |
+| **Elo or TrueSkill** (v1's ratings) | Results depend on the order of votes. Bradley–Terry fits all votes at once and takes per-voter and side terms |
+| **Every site against every other** | 84 sites make 3,486 pairs per round. Done only for the 14 calibration sites; the rest get pairs that balance coverage |
+| **Active learning** (serving the most informative matchups) | More efficient, but the data then depends on the model of the moment. The pilot collects even coverage first; this can come later |
+| **Stills and recordings judged together** | Mixes how a site looks with how it moves. Two rounds give two clean labels |
+| **A fixed vocabulary for reasons** | Decides in advance what designers can say. Themes are found in their own words afterwards |
+| **Judging the live sites** | They change, and load differently on each visit and network, so votes could not be reproduced. Votes are on fixed, pinned captures |
+| **Training the image model end to end** | Too few labels (about 1,200 pilot votes). A frozen image model with small heads on top is the right size |
+| **Collecting real bad sites for contrast** | Hard to source and to agree on. Degraded twins (one dimension damaged on purpose) and generated "AI default" pages instead |
+
 ---
 
-## 9. HOW (Technical Architecture)
+## 9. HOW (Technical Architecture and Method)
 
 ### 9.1 System Overview (v2)
 ```
- manifest (1,006 award URLs + generated "AI default" pages)
+ manifest (1,006 award URLs, each id fixed to one URL + generated "AI default" pages)
      │
  CAPTURE  Playwright, Chromium full headless (GPU), 1440×900, the same for every site
      │    stills: hero + 3 screens · UX reel: intro, slow scroll, hovers, menu (H.264)
@@ -197,9 +219,10 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
  VOTE     Supabase (rules in Postgres) + a thin Flask API on Vercel + a neutral voting page
      │    visual round on stills · motion round on reels · A / B / equally good / can't decide
      │    what decided it: listed dimensions and the designer's own words, plus a written reason
-     │    agreement measured continuously (panel, repeats, designer pairs, visual vs motion)
+     │    every vote pinned to the exact media version it showed; time on screen measured
+     │    agreement and biases measured continuously (panel, repeats, designer pairs, rounds)
      │
- LEARN    Claude as a baseline judge (both orders) · pairwise scorer on frozen image
+ LEARN    Claude as a blind baseline judge (both orders) · pairwise scorer on frozen image
      │    embeddings: P(A beats B) = σ(score A − score B), one head per dimension
      │    synthetic labels: original beats its twin · award beats generated
      │
@@ -208,23 +231,178 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
           award sites and a critique written by Claude from scores and human reasons
 ```
 
-### 9.2 Principles
+### 9.2 Research Question
+Can a model learn what experienced designers mean by well-made web design, per dimension, from
+their pairwise judgments, well enough to rank and critique pages it has never seen? Three questions
+are answered in order, and each can stop the project or change it:
+
+1. **Do designers agree?** Agreement among designers on the same pairs is the ceiling for any
+   model. If it is low, taste here is personal, and the product becomes per-designer.
+2. **Does a language model already know?** Claude judging the same pairs, blind and in both orders,
+   is the baseline a trained model must beat.
+3. **Is it learnable from pixels and measurements?** A small scorer on frozen image embeddings,
+   tested on sites it never saw.
+
+### 9.3 Principles
 - **Measure what the browser knows, and judge from what voters saw.** A model is never asked to
   report what the DOM or the pixels already show.
 - **Language explains; it does not judge.** Descriptions are facts; verdicts come from votes and
   the trained scorer.
 - **Capture what designers say without predefining it.** Listed dimensions are shortcuts.
   Designers can always use their own words, and themes are found in the text later.
+- **Every vote points at exactly what it showed.** Media is published in versions named by a
+  fingerprint of the files and never overwritten; a site id always means the same URL.
+- **Measure bias rather than assume it away,** and correct it in the model (section 9.6).
 - **Honest evaluation.** Split by site, never by pair. The ceiling is how often designers agree
-  with each other.
+  with each other. The Claude baseline is blind. Anything that tells a voter about their own or
+  others' votes during voting is a change to the experiment, and is recorded as one.
 
-### 9.3 Key Technical Challenges (as met)
+### 9.4 Method: Collecting Judgments
+- **Corpus.** 1,006 award-winning sites. The pilot uses 100 drawn at random with fixed seeds; 90
+  passed QA, and 84 remained after a visual check removed pop-ups the scraper missed and an
+  unfinished page.
+- **Capture.** The same for every site, so captures are comparable:
+  - four stills (the hero and three screens, by native, inner or wheel scrolling);
+  - a scripted reel of 15–45 seconds: the intro, a slow scroll down and back, hovers, the menu;
+  - the DOM boxes, the design tokens, the animations and GSAP calls;
+  - load, jank and scroll metrics;
+  - quality flags.
+
+  Cookie walls, age gates and pop-ups are answered only inside the layer that blocks the page;
+  anything unresolved fails QA.
+- **Two rounds.** Visual (stills) and motion (reels) are judged separately, so "looks good, moves
+  badly" is two clean verdicts rather than one muddled one.
+- **Pairwise votes.** A is better, B is better, equally good, or can't decide; or report a broken
+  capture. Choosing between two is easier and more consistent than scoring one.
+- **What decided it.**
+  - **Listed dimensions:** up to three, from six per round, each with a definition the voter
+    can read.
+  - **Own words:** any wording. Suggestions come only from the voter's own past words.
+  - **A written reason:** required on a decisive vote when asked. It is asked on 1 pair in 3 at
+    random, always on pairs other designers split on, and in the other round whenever it was
+    asked there.
+- **Which pair comes next.** The first of these that applies:
+  1. an unanswered pair served in the last hour;
+  2. the next calibration pair: all pairs among 14 visual and 8 motion sites, chosen as the most
+     varied by measured features, judged by every designer in their own shuffled order;
+  3. 10 calibration pairs again, sides swapped, to measure each designer's consistency;
+  4. 10% of the time, a pair another designer judged, to keep measuring agreement;
+  5. otherwise, the least-compared site against a random site this voter hasn't paired it with.
+
+  Each site goes on the side it has been on less. Targets: 200 visual and 100 motion votes per
+  designer.
+- **The voting page.** Each choice has its reason:
+  - **Neutral grey, light only.** A coloured frame changes how the sites' own colours read.
+  - **A and B, not left and right.** Left and right make no sense on a phone.
+  - **The sites fill the screen.**
+  - **Pick, then explain.** The question becomes "What made A better?".
+  - **All four outcomes look the same.** Loud A and B buttons push people away from ties.
+  - **Invite links carry the code after the #,** so it never reaches a server log.
+  - **The voter's name is always visible,** so a shared device can't mix up voters.
+- **The panel.** Four designers and two spares. The voter guide asks them to judge craft: not the
+  brand, the fashion of a style, or the language of the page.
+
+### 9.5 Method: Learning, Evaluation and Use
+1. **Baseline first.** Claude judges the calibration pairs in a fresh request per pair, in both
+   orders, from a fixed prompt, with results sealed before the designers' results are read. That is
+   the bar a trained model must beat, and it tells us whether training is worth it.
+2. **A pairwise scorer.** A frozen, pretrained image model (SigLIP, CLIP or DINOv2) turns each screen
+   into numbers. A small network on top learns a score per site from the votes, using the
+   Bradley–Terry model: P(A beats B) = σ(score A − score B). It is the recipe behind PickScore,
+   ImageReward and the LAION aesthetic predictor; with about 1,200 pilot votes, training only the
+   part on top is the right size.
+3. **One head per dimension (MDPD).** Each head trains on the votes that cited its dimension, plus
+   the twins. The motion head uses reel frames, UX metrics and animation features.
+4. **Labels and weights.**
+   - Each designer's votes are weighted by their reliability in calibration.
+   - Ties count as half a win each.
+   - "Can't decide" and "broken" votes are left out of preference labels. Their words still show
+     which trade-offs were hard.
+   - Voter identity is part of the model: per-voter scores, not one averaged truth.
+5. **Honest testing.**
+   - Train and test are split by site, never by pair, with fixed seeds.
+   - Test sites are chosen before anyone looks at results.
+   - The ceiling is designer agreement.
+   - Results are also reported within each kind of site (section 9.7).
+6. **Critiques.** Claude writes them from the scores, the measured facts and the human reasons from
+   the most similar pairs. Fine-tuning a vision-language model (SFT, then DPO) only makes sense
+   later, if those critiques fall short and enough written reasons exist.
+
+**Use.**
+- **Designers:** a library ranked by craft, overall and per dimension; filters from the
+  descriptions; each site's tokens as a ready style guide; "more like this" from the embeddings.
+- **Coding agents over MCP:** the agent's page is captured the same way, scored per dimension,
+  compared with the nearest award sites and critiqued. The award-versus-generated direction flags
+  drift toward generic pages.
+- **Research:** the agreement numbers show whether taste is learnable before more is spent.
+
+### 9.6 Biases: How Each Is Prevented, Measured and Corrected
+Votes measure taste, but other things lean on them too: which side a site was on, the screen it was
+seen on, how tired the voter was, how much they looked. Nothing here is shown to voters while they
+vote; `taste votes agreement` prints every view named below.
+
+| Bias | Prevented by | Measured by | Corrected in training by |
+|---|---|---|---|
+| **Position.** Favouring a side | Balanced sides per site; repeats swap sides | `voter_bias.left_share` (near 0.5 is no lean), split by layout; `voter_consistency` | A side term in the pairwise model, per voter if they differ |
+| **Device and layout.** One site at a time on a phone, both at once on a desktop | — | `voter_bias` split by `layout`; `client.viewport_width` | Layout as a covariate; votes cast without seeing both sites down-weighted |
+| **Not looking at both sites.** Phones show A first | — | `vote_attention.saw_both`, `voter_bias.saw_both_share` | Votes where B was never opened dropped or down-weighted |
+| **Hero only.** Never scrolling past the first screen | — | `vote_attention.scrolled_both` (visual) | A weight by attention; models compared with and without these votes |
+| **Motion judged without watching** | — | `vote_attention.played_both` (motion) | Motion votes count only when both reels were played |
+| **Fatigue** | Guide: sessions of 20–30 votes; calibration order shuffled per voter | `voter_effort`: early vs late median active time within sittings (a new sitting starts after 30 minutes without a vote) | A weight that falls with position in a long sitting |
+| **Idle time counted as effort.** A tab left open, a break mid-pair | Guide: breaks are fine, time away is not counted | `vote_attention.active_seconds`, `left_page`; `voter_effort.idle_votes`, `left_page_votes` | Active time, never wall-clock time, for effort and fatigue |
+| **Low effort** | Votes under 1 second are refused | `voter_effort.fast_votes`, `voter_consistency` | Per-voter reliability weights from calibration |
+| **Ties and "can't decide" as an easy way out** | All four outcomes look the same | `voter_bias.tie_share`, `cant_decide_share`, with their words | Ties as half-wins; "can't decide" left out of preference labels |
+| **Priming by the listed dimensions** | Own words always offered; suggestions only from the voter's own past words | `voter_bias.own_words_share` | Themes found from own words and reasons, not imposed |
+| **Being asked for a reason** | Asked at random and on split pairs, never explained | `served_pairs.reason_requested` against outcome and time | A covariate: do asked votes differ? |
+| **Visual verdict colouring the motion verdict** | Rounds in separate sessions | `round_differences`, including `same_session` | Same-session and separate-session differences compared |
+| **Brand recognition** | The guide asks voters to judge craft | `vote_attention.opened_live` | Famous and unknown sites' win rates compared; a brand covariate if it matters |
+| **Language** | — | `language_bias` (win share by page language) | A language covariate if a lean appears |
+| **Kind of site.** A showcase site has one job and few constraints | Guide wording (open decision, section 9.7) | Win share by kind of site, once each site's kind is recorded | Kind as a covariate; results reported within each kind |
+| **Feedback to a voter** about their own votes | Never shown during voting | The database history records any exception, with its time | Votes before and after compared |
+| **Voter taste** (signal, not noise) | Calibration pairs every voter judges | `voter_agreement`, `pair_agreement` | Voter identity in the model |
+
+The order of processing:
+1. During voting, `taste votes agreement` after each voting day.
+2. After each voting day, `taste votes export`: the votes, their events, the media versions they
+   point at, and the sites.
+3. A cleaning and weighting step (to build) writes one weight per vote, with the reason for each,
+   so every exclusion is explainable.
+4. Training uses those weights and the covariates above.
+
+### 9.7 Known Limits
+- **Form against function.** Nothing yet records what each site is for. A showcase site may win
+  for having fewer constraints than a shop or a company site. In the pilot pool, by one reading:
+  26 showcase, 22 shop or brand, 18 company, 12 editorial or institution, 6 hospitality. Showcase
+  sites carry a third of the text and half the length of the others. A simulation showed such a bias
+  would fill the top of a single ranking, while rankings within each kind stay intact; pairing
+  within kinds barely helps. Research agrees that what makes a site appealing differs by domain
+  (Papachristos & Avouris, 2013). The fix is to record each site's kind and report within kinds.
+  The guide's tie-breaker ("which one would you rather show a client?") leans toward showcase
+  sites; whether to change it is an open decision.
+- **An award-only corpus.** Every site is "good"; contrast comes from twins and generated pages.
+  Datasets made mostly of beautiful images can hide or even reverse effects (Parraga et al., 2025).
+- **Experts, not users.** Designers reward craft and novelty; ordinary users prefer simple, typical
+  sites (Tuch et al., 2012). TASTE learns designers' judgment of craft, not user appeal.
+- **Desktop only.** One viewport, 1440×900. Mobile design is not judged.
+- **A small panel.** Four designers; individual taste is treated as signal and modelled per voter.
+- **What the data still lacks:**
+  - who the voters are (experience, discipline), and their recorded consent to use their
+    judgments and words;
+  - each site's kind and purpose;
+  - the page text;
+  - held-out test sites.
+- **Rights.** Screenshots and recordings of other people's sites are kept private: the votes,
+  URLs and measurements can be shared, the media cannot.
+
+### 9.8 Key Technical Challenges (as met)
 | Challenge | How v2 handles it |
 |-----------|------------|
 | Hostile sites: gates, cookie walls, bot walls, scroll hijacking | Scoped multilingual gate answers, a page-change guard, a normal browser identity, stills by native, inner or wheel scroll; anything unresolved fails QA |
 | Motion that stills cannot show | A scripted reel per site, Chromium's own scroll gesture, motion and UX metrics on a GPU-rendered page |
 | Subjective evaluation | Calibration pairs every designer judges, swapped repeats, overlap, per-voter weighting |
-| LLM judges biased by position | Baseline in both orders; the trained judge works on embeddings, not text |
+| Votes drifting from what they judged | Media versions named by fingerprint, never overwritten; every pair and vote pinned to the version it showed |
+| Effort hidden by idle time | Time on screen and in use measured per pair, separately from wall-clock time |
+| LLM judges biased by position | A blind baseline in both orders; the trained judge works on embeddings, not text |
 | A judge that never saw slop | Degraded twins and generated pages as contrast |
 
 ## 10. PROCESS (Development Roadmap)
@@ -234,15 +412,20 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
   (see the journal)
 - [x] v2 capture, analysis, voting schema, voting app, agreement measurement
 - [x] Scraper tested on 30 random sites, fixed, re-run
+- [x] Pilot capture: 100 random sites, 90 passed QA, 84 in the pool after a visual check
+- [x] Calibration (14 visual sites, 91 pairs; 8 motion sites, 28 pairs), six voters, the voting
+  site live (3 October)
+- [x] Active time per vote; every vote pinned to the exact media it showed (4 October)
 
 ### Pilot (now)
-- [ ] Capture 100 sites (`manifest/pilot-ids.txt`); about 75 expected to pass QA
-- [ ] Calibration: 14 sites in the visual round (91 pairs), 8 in the motion round (28 pairs),
-  then adaptive pairs
-- [ ] 4 designers, about 1,600 votes
-- [ ] Measure agreement and consistency; run the Claude baseline judge
+- [ ] Four designers reach their targets: 200 visual and 100 motion votes each, about 1,200 votes
+- [ ] Measure agreement, consistency and biases daily; export after each voting day
+- [ ] Record each site's kind and purpose; decide the guide's tie-breaker
+- [ ] Choose held-out test sites before looking at results
+- [ ] Run the blind Claude baseline (needs API credit)
 
 ### Scale (if the pilot clears its agreement target)
+- [ ] A link-health pass over all URLs (about 17% of the sample was dead, parked or spam)
 - [ ] Capture the remaining ~900 URLs, the twins (stills only) and the generated pages
 - [ ] Train the pairwise scorer; per-dimension heads; evaluate against designer agreement
 
@@ -266,7 +449,7 @@ Focus on **reference deconstruction** and **system generation** as a copilot wit
 | Capture | Python 3.12, Playwright (Chromium full headless), ffmpeg, Pillow, NumPy |
 | Pipeline | The `taste` command line (`taste-engine/`), pydantic settings |
 | Language | Claude API (Opus 5.5 by default) through the Message Batches API |
-| Voting data | Supabase: Postgres with the voting rules, private Storage with signed links |
+| Voting data | Supabase: Postgres with the voting rules and append-only media versions, private Storage with signed links |
 | Voting site | Flask function and static pages on Vercel |
 | Learning (next) | PyTorch, frozen image encoders (SigLIP / CLIP / DINOv2) |
 
@@ -291,14 +474,47 @@ prices. The original phase budgets below assumed a funded product and are kept f
 | Phase 2 | $5,000–$15,000 | GPU rental, contractor fees, marketing |
 | Phase 3 | $50,000–$200,000 | Full-time hires, infrastructure, sales |
 
-### 11.5 Data Requirements
-- **Corpus**: 1,006 award URLs (about 790 expected to capture cleanly), their degraded twins, and
-  about 60 generated pages
-- **Per site**: four stills, a UX reel, DOM boxes, design tokens, animations, UX metrics, quality
-  flags, a factual description
-- **Labels**: pairwise votes from designers (visual and motion), with listed dimensions, their own
-  words and reasons; automatic labels from twins and generated pages
-- **Legal**: screenshots of public pages for research; the voting site never embeds live sites
+### 11.5 Data
+**What is collected, and what it is for.**
+
+| Data | Source | Used for |
+|---|---|---|
+| Four stills and a reel per site, kept as versions named by a fingerprint of the files | capture | image and frame embeddings, then the visual and motion scores |
+| UX metrics: load, layout shift, dropped frames, scroll hijack, reduced motion | capture | motion and UX inputs |
+| Fonts, type scale, palette, spacing; the animation list | capture | inputs, and a style guide for designers |
+| Pixel and layout features (every measured value, none hand-picked) | analysis | inputs, explaining scores, choosing varied calibration sites |
+| Claude descriptions: language, anything covering the page, whether it is a live site (facts only) | describe | search and filters; never quality labels |
+| Votes: outcome, sides, the media versions shown | designers | **the real labels** |
+| Listed dimensions, own words, written reasons | designers | per-dimension heads, critiques, themes found in their words |
+| How each vote was cast: device, layout, what was looked at, time on screen and in use | the voting page | bias correction and vote weights (section 9.6) |
+| Original beats each degraded twin | automatic | one label per dimension |
+| Award site beats generated page | automatic, generator not built | the direction away from generic pages; a weaker label |
+
+**Where each vote's data lives.**
+
+| Data | Recorded in | Written by |
+|---|---|---|
+| Which capture was on which side, the verdict, and the media version each side showed | `votes.left_capture`, `right_capture`, `outcome`, `left_media`, `right_media` | `cast_vote`, from the served pair |
+| When the pair was served, and the wall-clock time to vote | `served_pairs.served_at`, `votes.seconds_to_vote` | `next_pair`, `cast_vote` |
+| Time on screen, in front and in use (up to `idle_cutoff_seconds` after the last input or a playing reel); times the voter left the page; the longest stretch without input; reloads | `votes.client.timing` | the voting page, with each vote |
+| Whether a reason was asked for | `served_pairs.reason_requested` | `next_pair` |
+| Listed dimensions and the voter's own words | `votes.dimensions`, `votes.own_terms` | `cast_vote` |
+| Session, position in the session, layout (`tabs`, `stacked`, `side_by_side`), screen size, pixel ratio, touch or mouse | `votes.client` (an open object; new keys need no schema change) | the voting page, with each vote |
+| What the voter looked at: phone tab opened, screens scrolled, reels played, live site opened | `vote_events` | the voting page, as it happens |
+| Every published media version, with each file's hash | `capture_media` (append-only) | `taste publish` |
+| The page's language, and whether anything covered it | `captures.description` | `taste describe`, then `taste publish` |
+
+The limits (the size of `client`, the low-effort threshold, the idle cut-off, the gap that starts a
+new sitting) live in `voting_config`, and each round's vote target in `round_targets`.
+`voting_facts()` gathers them for the voting page and the voter guide.
+
+**Storage and exports.** Votes live in Supabase, with no automatic backups on the free tier; an
+export after each voting day is the backup. Captures and media stay on the capture machine and in a
+private bucket; the site list (`list.md`, `taste-engine/manifest/sites.csv`) and the v1 archive are
+kept out of the repository.
+
+**Legal.** Screenshots of public pages for research; the voting site never embeds live sites; media
+is never published with the data.
 
 ---
 

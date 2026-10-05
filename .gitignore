@@ -62,3 +62,8 @@ node_modules/
 
 # v2 pipeline outputs: media and derived data live in Supabase Storage, never in git
 taste-engine/data/
+
+# The site list, its manifest and the v1 archive stay on the capture machine (kept out of git history)
+list.md
+taste-engine/manifest/sites.csv
+taste-engine/data_v1_archive/

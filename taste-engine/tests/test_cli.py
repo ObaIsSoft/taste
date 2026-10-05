@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from taste_engine import cli
+from taste_engine import cli, manifest
 from taste_engine.cli import main, parse_ids, parse_variants
-from taste_engine.schemas import Variant
+from taste_engine.schemas import Cohort, Variant
 from taste_engine.settings import Settings
 
 
@@ -28,7 +28,12 @@ def test_bad_input_is_a_usage_error_not_a_traceback(argv, capsys):
     assert "invalid" in capsys.readouterr().err
 
 
-def test_an_id_missing_from_the_manifest_is_a_clean_error(caplog):
+def test_an_id_missing_from_the_manifest_is_a_clean_error(caplog, monkeypatch, tmp_path):
+    # its own manifest: the real site list is kept out of the repository
+    settings = Settings(data_dir=tmp_path, manifest_path=tmp_path / "sites.csv")
+    entries = manifest.entries_from_urls(["https://a.test/"], Cohort.AWARD, "t")
+    manifest.write_manifest(entries, settings.manifest_path)
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
     assert main(["capture", "--ids", "99999"]) == 2
     assert "ids not in manifest: [99999]" in caplog.text
 

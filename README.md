@@ -9,12 +9,11 @@ TASTE learns what well-made web design looks like from designers' judgments. Two
 
 | Path | What |
 |---|---|
-| `AI_Design_Taste_Engine_Brief.md` | The idea, the market, and the v2 architecture and roadmap |
-| `taste_engine_journal.md` | The project journal: v1's journey and why it failed, the v2 rebuild |
+| `AI_Design_Taste_Engine_Brief.md` | The idea and the market; v2's architecture, method, data, biases, limits, alternatives and roadmap |
+| `taste_engine_journal.md` | The project journal, by date: v1's journey and why it failed, the v2 rebuild, the pilot |
 | `taste-engine/` | The v2 code: the `taste` command line, the voting site, the database schema |
-| `taste-engine/docs/v2-build-log.md` | What was built, why, the scraper tests and their results |
 | `taste-engine/docs/operations.md` | Running it live: hosting, free-tier limits, the database history, runbooks |
-| `list.md` | The original list of award-winning sites; imported into `taste-engine/manifest/sites.csv` |
+| `list.md`, `taste-engine/manifest/sites.csv` | The site list and the manifest made from it. Not in the repository (git-ignored): keep them on the capture machine, with a backup elsewhere. The pipeline needs `sites.csv` |
 
 ## Quick start
 

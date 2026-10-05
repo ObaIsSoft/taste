@@ -11,6 +11,7 @@ that removes data is recorded under [Database history](#database-history).
 | Database and media | Supabase project (free tier) | Postgres holds the voting rules; media is in the private bucket `captures` |
 | Voting site | Vercel project `taste` (Hobby), deployed from `taste-engine/web` | Production: https://taste-opal.vercel.app. The project is also connected to GitHub and deploys on pushes to `main` |
 | Capture, analysis, publishing | This machine | The `taste` command line in `taste-engine/` |
+| Site list, manifest, v1 archive | This machine only | `list.md`, `taste-engine/manifest/sites.csv` and `taste-engine/data_v1_archive/` are git-ignored and not in the repository's history. Keep a backup elsewhere; the pipeline needs `sites.csv` |
 
 ## Settings
 
@@ -51,9 +52,9 @@ Append an entry for every change that deletes or rewrites data.
 - **Why.** v2 is a fresh start: v1 votes came from one person, were made against different captures,
   and do not tie a vote to a voter.
 - **Backed up first.** `match_history` and `ratings` were exported to
-  `taste-engine/data_v1_archive/supabase/`, with their schema in `v1_schema.sql`: 771
-  `match_history` rows and 99 `ratings` rows, matching the live tables. There was no `voters`
-  table and no storage bucket.
+  `taste-engine/data_v1_archive/supabase/` (on the capture machine only, not in the repository),
+  with their schema in `v1_schema.sql`: 771 `match_history` rows and 99 `ratings` rows, matching
+  the live tables. There was no `voters` table and no storage bucket.
 - **What was dropped.** The v1 tables `match_history` and `ratings`, by
   `supabase/migrations/0001_v2_voting.sql`. Their open anonymous policies went with them.
 - **What was created.** The v2 voting schema: 10 tables, 11 views, 12 dimensions, round

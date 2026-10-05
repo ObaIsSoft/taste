@@ -3,8 +3,9 @@
 > **Reading guide (October 2026).** Everything up to the September 28th update records v1: the
 > first pipeline, its LLM critics and why they failed. v1 code was retired on 3 October 2026; it
 > remains in git history. The v2 rebuild, its decisions and the live cutover are in the last two
-> sections, with full detail in `taste-engine/docs/v2-build-log.md` and
-> `taste-engine/docs/operations.md`.
+> sections. What v2 is (its method, data, biases and the alternatives considered) is in
+> `AI_Design_Taste_Engine_Brief.md`, sections 8.6 and 9–11; the runbooks and the database history
+> are in `taste-engine/docs/operations.md`.
 
 ## 1. Executive Summary & Core Motivation
 The goal of **TASTE** (Training AI for Structured Taste Engine) is to create the first AI system capable of understanding and quantifying subjective design "taste"—specifically structural layout, typography, color harmony, and motion choreography—by reverse-engineering premium, award-winning websites.
@@ -760,11 +761,43 @@ Postgres. What changed, and why:
 - **Agreement is measured, not assumed.** Fixed calibration pairs, swapped repeats, overlap pairs
   and views that line votes up. Split pairs always ask for reasons, and conflicting reasons are kept:
   they show whether designers weighed different things or disagree on the same thing.
-- **The scraper was tested honestly.** On 30 random sites only 15 came out clean at first. A
-  quarter of the captures that passed QA were wrong: an age gate on every still, a click that left
-  the page, parked and spam domains. The fixes (gates answered only inside the blocking layer, a
-  page-change guard, patient wheel scrolling, a normal browser identity, GPU rendering, Chromium's
-  own scroll gesture for reels, new QA flags) were verified by re-running the same 30 sites.
+- **The scraper was tested honestly.** 30 sites were drawn at random (seed 20261003), plus the four
+  twins of three of them: 42 captures in 18.6 minutes, about 27 seconds a site with two workers, so
+  about 8 hours for all 1,006. Judged by eye against contact sheets:
+  - **15 good, and 3 usable but weak.**
+  - **6 wrong but passed QA,** a quarter of all passes: an Italian age gate on every still, an
+    "Explore" click that left the page, a flashing-lights warning, two parked domains and a
+    casino-spam takeover.
+  - **2 correctly failed, and 4 failed outright:** a 2.5-second screenshot timeout, and a dead
+    domain.
+
+  Link rot alone was 5 of 30 (17%). Every reel juddered five times a second, because it was
+  recorded at 25 fps and transcoded to 30. The spacing twin barely differed from its original.
+
+  The fixes, then a re-run of the same sites:
+  - gates answered only inside the layer that blocks the page;
+  - a page-change guard;
+  - patient wheel scrolling;
+  - a normal browser identity;
+  - GPU rendering;
+  - Chromium's own scroll gesture for reels;
+  - flags for parked, spam and down sites.
+
+  Bellussi got through its cookie dialog and age gate, Revolut stopped blocking, and parked and
+  spam domains were flagged. Dropped frames fell to about zero once WebGL ran on the GPU (the
+  first run had measured this machine, not the sites), and reel judder fell from 21–33 frozen
+  frames to 1–6. Sites with fewer than four stills turned out to have fewer screens; the first run
+  had padded them with animation frames of the same screen.
+- **An external code review, checked point by point.** Of 24 points:
+  - **13 were fixed:** the gate clicker, no limit on vote speed, a failed transcode discarding a
+    good capture, adaptive pairing stranding a busy voter, tracebacks, gaps in the tests, among
+    others.
+  - **Several were real but minor.**
+  - **Three were wrong:** reduced motion on static sites, batches hanging forever, and Flask as a
+    development-only dependency.
+
+  One was worse than stated: the live v1 database let anyone read and write. The cutover dropped
+  those tables.
 - **Free tier, permanently.** Media is sized to fit Supabase's free storage (about 1 MB a site),
   and only votable originals go online.
 
@@ -866,6 +899,38 @@ making sure what voting records is trustworthy, and into the questions the first
 - A vote is only as good as the record of what it saw.
 - Anyone who knows the goals, the pool and the votes, human or model, is not a blind judge.
 - Feedback to a voter during voting is a change to the experiment.
+
+## October 5th Update: Fewer Documents, and a Repository Ready to Be Public
+
+- **Fewer documents.** The build log and the bias notes were folded in:
+  - **Into the brief:** the method, the data, how each bias is handled, the known limits, and a
+    new section on the method alternatives considered (section 8.6).
+  - **Into this journal:** the history.
+
+  The brief says what v2 is, the journal says what happened and why, and `operations.md` says how
+  to run it.
+- **What a scan of the full history found** before making the repository public:
+  - the site list, `list.md`, and its manifest copy;
+  - about 100 of its URLs written into the retired v1 scraper;
+  - 3,040 files of v1 captures, recordings of other people's sites with their URLs, about 1 GB;
+  - an old committed `.env` holding the live database's service-role key and a Supabase access
+    token;
+  - a Google API key, also in a committed `.env.example`;
+  - a personal email on every commit.
+- **The rewrite.** The history was rewritten once:
+  - the list, the manifest, the v1 archive and the old capture folders removed from every commit,
+    and kept on the capture machine only;
+  - the scraper's URLs and the keys redacted;
+  - the commit email replaced with the GitHub noreply address.
+
+  Every commit id changed; older ids quoted in notes no longer resolve.
+- **Keys must be replaced at their source.** A key that has been pushed is leaked whether or not
+  history is rewritten. The service-role key, the access token and the Google key are to be
+  replaced in their dashboards before the repository goes public, and the database password reset.
+
+**Lesson.** Scan everything a commit has ever held, not just today's files, before publishing a
+repository. A `.env` committed once is in history for good until history is rewritten, and its keys
+are leaked until they are replaced.
 
 ## Lessons From v1 (kept from retired notes)
 
