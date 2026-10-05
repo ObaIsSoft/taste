@@ -18,7 +18,7 @@ that removes data is recorded under [Database history](#database-history).
 | Where | Variable | Purpose |
 |---|---|---|
 | `taste-engine/.env` | `SUPABASE_URL` | The Supabase project |
-| `taste-engine/.env` | `SUPABASE_KEY` (or `SUPABASE_SERVICE_KEY`) | Service-role key for publishing, voters and exports |
+| `taste-engine/.env` | `SUPABASE_KEY` (or `SUPABASE_SERVICE_KEY`) | A Supabase secret key (`sb_secret_…`) for publishing, voters and exports. The legacy JWT keys are disabled; never re-enable them |
 | `taste-engine/.env` | `SUPABASE_DB_URL` | Postgres connection string; only needed to apply migrations |
 | `taste-engine/.env` | `TASTE_VOTING_URL` | `https://taste-opal.vercel.app`, so `taste voters add/list` print invite links |
 | `taste-engine/.env` | `ANTHROPIC_API_KEY` | Claude descriptions and, later, the baseline judge |
@@ -140,6 +140,23 @@ Append an entry for every change that deletes or rewrites data.
   them separately if they differ. Claude's in-session judgments are kept outside the database
   (`data/benchmark/claude-visual-calibration-2026-10-04.jsonl`). They are exploratory, not the
   benchmark: they were made with the project's context and earlier verdicts in view.
+
+### 2026-10-05: keys replaced, repository made public (no data changed)
+
+- **Why.** A full scan before going public found, in old commits, a committed `.env` with the live
+  service-role key and a Supabase access token, and a Google API key.
+- **Done.** A new secret key (`sb_secret_…`) in `.env` and in Vercel's `SUPABASE_SERVICE_KEY`,
+  with the live site tested on it. Then:
+  - the legacy JWT keys disabled; the leaked service-role key now returns 401;
+  - the access token revoked;
+  - the Google key deleted;
+  - the database password reset.
+
+  The history was rewritten to remove the keys, the site list, the manifest and the v1 archive,
+  and the repository was made public.
+- **Still reachable.** GitHub can still serve the pre-rewrite commits to anyone who knows their
+  ids, until GitHub Support purges them. The keys in them are dead; the site list and the v1
+  media are not secret, but are kept out of the repository.
 
 ## Runbooks
 

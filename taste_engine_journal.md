@@ -924,9 +924,12 @@ making sure what voting records is trustworthy, and into the questions the first
   - the commit email replaced with the GitHub noreply address.
 
   Every commit id changed; older ids quoted in notes no longer resolve.
-- **Keys must be replaced at their source.** A key that has been pushed is leaked whether or not
-  history is rewritten. The service-role key, the access token and the Google key are to be
-  replaced in their dashboards before the repository goes public, and the database password reset.
+- **Keys replaced at their source.** A key that has been pushed is leaked whether or not history is
+  rewritten. Before the repository went public:
+  - **Database:** a new secret key in place of the service-role key, and the legacy keys
+    disabled. The leaked key was tested afterwards and is rejected.
+  - **The other keys:** the access token revoked, the Google key deleted, the database password
+    reset.
 
 **Lesson.** Scan everything a commit has ever held, not just today's files, before publishing a
 repository. A `.env` committed once is in history for good until history is rewritten, and its keys
