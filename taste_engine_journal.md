@@ -779,6 +779,94 @@ voting site moved to v2 with six voters (four designers, two spares). Publishing
 transient Supabase failures (a stalled connection, an HTTP 520); uploads now retry them instead
 of stopping the run.
 
+## October 4th Update: Voting Opens, and Making the Data Hold
+
+Voting opened with the invite links. By the evening only Obafemi had voted (29 votes: 26 visual,
+3 motion). Leonardo and Donatello each opened a round and left without voting. The day went into
+making sure what voting records is trustworthy, and into the questions the first votes raised.
+
+- **Two sign-in bugs, both fixed.** Pasting a whole invite link into the code box was rejected.
+  Worse, opening a second link in a tab that was already signed in changed only the part after `#`,
+  which does not reload the page, so the first voter stayed signed in: every link seemed to open
+  the same account. The accounts were never wrong. My own smoke test had hit the same trap, and I
+  patched the test instead of seeing the bug in the product. The page now switches voter on a new
+  link, and the voter's name is always visible ("Not Leonardo? Sign out").
+- **Sign-in is slow.** A blank page for up to about 8 seconds. The API runs in Washington, the
+  database in Ireland, and free-tier functions start cold. A plausible reason the two designers
+  stopped; not yet fixed.
+- **The pairing holds.** A simulation on a copy of the live setup (the real 84 sites and
+  calibration sets, four simulated designers with a shared taste plus personal noise) confirmed it:
+  - every designer judges every calibration pair once, before anything else;
+  - repeats come back with the sides swapped;
+  - sides stay balanced;
+  - excluded sites are never served;
+  - the votes recover the hidden ranking (0.95 visual, 0.86 motion).
+
+  Two things to know: "adaptive" pairing balances coverage rather than choosing informative
+  matchups, and calibration takes 45% of a designer's visual votes.
+- **Form against function.** Does a showcase site beat a shop or a corporate site just because it
+  has one job and no constraints? Nothing records what a site is for, so it cannot yet be measured.
+  - **The pool, by my reading:** 26 showcase, 22 shop or brand, 18 company, 12 editorial or
+    institution, 6 hospitality.
+  - **Showcase sites look different:** a third of the text, half the length, more scroll hijacking.
+  - **What the simulation showed:** a showcase bias would fill the top of a single ranking, while
+    rankings within each kind of site stay intact. Pairing sites mostly within a kind barely
+    helps; only knowing each site's kind does.
+  - **Research agrees aesthetics differ by domain:** Papachristos & Avouris 2013, Tuch et al.
+    2012, Parraga et al. 2025.
+  - **The guide leans toward showcase sites:** its tie-breaker is "which one would you rather
+    show a client?"
+
+  Still open: tag each site's kind, and decide the tie-breaker.
+- **Active time, not wall-clock time.** One vote took 12.4 hours: a tab left open overnight. The
+  page now measures each pair's time on screen, in front and in use (up to two minutes after the
+  last input), and how often the voter left (migration 0002). By Obafemi's decision, the 28 earlier
+  votes keep their wall-clock time as active time, marked as such, and the 12-hour vote has none.
+- **Votes pinned to what they showed.** A vote named only a capture, and re-publishing overwrote
+  its files, so a re-capture would have silently changed what old votes point at.
+  - **Versions:** media is now published as versions named by a fingerprint of the files, never
+    overwritten (migrations 0003 and 0004).
+  - **Pins:** every pair and vote records the version each side showed, and the database refuses
+    to change it.
+  - **Sites:** a site id always means the same URL.
+  - **Checked:** all 423 files were verified byte for byte before and after.
+  - **Exports** now include the versions and the sites, so they stand on their own. One is taken
+    after each voting day, as a backup rather than the final dataset.
+- **What the data still lacks:**
+  - who the voters are (experience, discipline), and their recorded consent to use their
+    judgments and words;
+  - what each site is for;
+  - each page's text;
+  - a plan for publishing data without republishing other people's screenshots;
+  - held-out test sites, chosen before anyone looks at results.
+- **Claude's own judgments, and why they don't count.** Asked to vote, I judged the 91 visual
+  calibration pairs and 10 swapped repeats in this session, kept apart from the designers' data.
+  - **The result:** I ranked dense, systematic sites first (Tablet, Oxide) and disagreed with
+    Obafemi on 15 of 24 shared pairs. Obafemi favoured airy, photographic sites; Oxide won 0 of 7
+    in their votes.
+  - **Why it is not a clean benchmark:**
+    - my earlier verdicts were in my context the whole time, so 9 of 10 consistent repeats
+      mostly measures memory;
+    - I had already formed opinions about these sites during the visual check;
+    - I knew the project's goals;
+    - I saw reduced images, with brand names visible.
+
+  The real benchmark is the scripted judge: a fresh request per pair, both side orders, a fixed
+  prompt, results sealed before the designers' results are read.
+- **A voter was given feedback mid-voting.** I told Obafemi, a voter, about their own voting
+  pattern twice, which is exactly what the system keeps from voters:
+  - **about 12:00 UTC:** showcase sites 6–4 in their votes. Votes 32–37 followed at 12:10–12:21.
+  - **about 19:35 UTC:** "you favour airy sites, Oxide 0/7".
+
+  Both are in the database history, so analysis can compare Obafemi's votes before and after.
+
+**Lessons.**
+- A test that works around a problem hides it: fix the product, not the test.
+- Wall-clock time is not effort.
+- A vote is only as good as the record of what it saw.
+- Anyone who knows the goals, the pool and the votes, human or model, is not a blind judge.
+- Feedback to a voter during voting is a change to the experiment.
+
 ## Lessons From v1 (kept from retired notes)
 
 These came from documents retired in the clean-up (`madpo.md`, `training.md`, `alternative.md`,

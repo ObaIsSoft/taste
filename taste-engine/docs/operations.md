@@ -126,6 +126,20 @@ Append an entry for every change that deletes or rewrites data.
 - **Left in storage.** The files from before, at `<capture>/<file>`, are no longer referenced
   (about 99 MB). They can be deleted later to free space; nothing points at them.
 
+### 2026-10-04: a voter given feedback on their own votes (no data changed)
+
+- **What happened.** During voting, Claude told Obafemi (a voter) about their own voting pattern,
+  which voters are not otherwise shown:
+  - **about 12:00 UTC:** in their cross-kind votes, showcase sites had won 6 and lost 4.
+  - **about 19:35 UTC:** they favoured airy, photographic sites; Oxide had won 0 of 7;
+    Claude's own judgments disagreed with theirs on 15 of 24 pairs.
+- **Votes affected.** Votes 32–37 (12:10–12:21 UTC) were cast after the first feedback. Every
+  Obafemi vote after 19:35 UTC follows the second.
+- **How to treat it.** Analysis compares Obafemi's votes before and after these times, and reports
+  them separately if they differ. Claude's in-session judgments are kept outside the database
+  (`data/benchmark/claude-visual-calibration-2026-10-04.jsonl`). They are exploratory, not the
+  benchmark: they were made with the project's context and earlier verdicts in view.
+
 ## Runbooks
 
 ### Cutover from v1 to v2 (one window)
