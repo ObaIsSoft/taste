@@ -173,6 +173,19 @@ Append an entry for every change that deletes or rewrites data.
   random order. Their remaining pairs now come in the balanced order, which evens out their
   exposure as far as the pairs left allow.
 
+### 2026-10-05: a calibration site reported broken, then reinstated
+
+- **What happened.** At 20:46 UTC Leonardo, on a 360-pixel phone, reported 348 (reimaginegenesis.com)
+  as broken, 13 seconds into the pair, without opening that site's screens. A report takes a capture
+  out of the pool for everyone, so the visual calibration set fell from 14 sites (91 pairs) to 13
+  (78).
+- **Why it was reinstated.** The capture is genuine: a dark, scroll-animated site that reads as
+  nearly blank on a small screen. Obafemi had judged 8 of its pairs without a problem. At 21:48 UTC
+  `in_pool` was set back to true and `qa_note` cleared: calibration is 14 sites and 91 pairs again.
+- **Kept.** Leonardo's report stays as a vote (`broken_left`, vote 72). Its pair (348 against 625)
+  counts as done for Leonardo, so that one calibration pair has no verdict from them.
+- **The weakness.** A single report changes the calibration set for every voter at once.
+
 ## Runbooks
 
 ### Cutover from v1 to v2 (one window)
