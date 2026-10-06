@@ -199,6 +199,26 @@ Append an entry for every change that deletes or rewrites data.
 - **Logged after the fact.** Leonardo's earlier report (vote 72, unchanged) was entered as report 1,
   dismissed at 21:48 UTC, the time 348 was reinstated.
 
+### 2026-10-06: 49 votes cast on Obafemi's account moved to Frida
+
+- **What happened.** From 21:47 UTC on 5 October, Obafemi's account was used from a second laptop
+  (1366×768-class screen, pixel ratio 1; Obafemi's own is 1512×868 at ratio 2). It cast 49 visual
+  votes in two sessions (`453ca32a…`, 21:47–21:52 on 5 Oct; `237e2495…`, 05:23–06:42 on 6 Oct). Its
+  reasons followed the box's placeholder ("B is better because …"), and its own words were picked
+  from the suggestions, which were Obafemi's past words. Obafemi identified the voter as Frida.
+- **Backed up first.** `taste votes export`, kept as `data/votes/*-2026-10-06-*-before-move.jsonl`.
+- **What changed.** In one transaction:
+  - the 49 votes and their 51 served pairs (two were left unanswered) moved to Frida;
+  - each moved vote gained `client.attribution` (moved from, when, and why, including that its own
+    words were prompted by Obafemi's);
+  - her 2 pairs labelled `repeat` relabelled `calibration`, since they repeated pairs Obafemi, not
+    she, had judged.
+
+  Now Frida has 49 visual votes (calibration 49/91); Obafemi has 43 (43/91), all from his own
+  laptop. The total stayed at 128.
+- **To stop it recurring.** Frida signs out on that laptop and opens her own link, or Obafemi's
+  invite code is replaced so the code saved there stops working.
+
 ## Runbooks
 
 ### Cutover from v1 to v2 (one window)
